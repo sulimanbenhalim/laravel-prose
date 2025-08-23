@@ -1,0 +1,15 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - src/
+        - tests/
+    
+    level: 5
+    
+    ignoreErrors:
+        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder.*::describe\(\)#'
+        - '#Relation .* is not found in.*model#'
+        - '#Offset .* on left side of \?\? always exists#'
+        - '#Property .* on left side of \?\? is not nullable#'

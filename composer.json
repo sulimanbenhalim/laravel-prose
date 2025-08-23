@@ -1,0 +1,70 @@
+{
+    "name": "sulimanbenhalim/laravel-prose",
+    "version": "0.9.0",
+    "description": "Transform Laravel Eloquent queries into natural language prose",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "eloquent",
+        "query",
+        "prose",
+        "natural-language",
+        "description",
+        "readable",
+        "orm"
+    ],
+    "authors": [
+        {
+            "name": "Suliman Benhalim",
+            "email": "soliman.benhalim@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "doctrine/inflector": "^2.0",
+        "illuminate/database": "^12.0",
+        "illuminate/support": "^12.0",
+        "nesbot/carbon": "^2.0|^3.0"
+    },
+    "require-dev": {
+        "doctrine/dbal": "^4.3",
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.13",
+        "orchestra/testbench": "^10.0",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^10.0|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SulimanBenhalim\\Prose\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SulimanBenhalim\\Prose\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
+        "format": "vendor/bin/pint",
+        "analyse": "vendor/bin/phpstan analyse"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "SulimanBenhalim\\Prose\\ProseServiceProvider"
+            ],
+            "aliases": {
+                "Prose": "SulimanBenhalim\\Prose\\Facades\\Prose"
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
