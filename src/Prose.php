@@ -7,9 +7,11 @@ namespace SulimanBenhalim\Prose;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use SulimanBenhalim\Prose\Support\Inflector;
+use SulimanBenhalim\Prose\Translators\DeleteTranslator;
 use SulimanBenhalim\Prose\Translators\ExistsTranslator;
 use SulimanBenhalim\Prose\Translators\LimitTranslator;
 use SulimanBenhalim\Prose\Translators\OrderTranslator;
+use SulimanBenhalim\Prose\Translators\UpdateTranslator;
 use SulimanBenhalim\Prose\Translators\WhereTranslator;
 
 class Prose
@@ -24,6 +26,10 @@ class Prose
 
     private LimitTranslator $limitTranslator;
 
+    private UpdateTranslator $updateTranslator;
+
+    private DeleteTranslator $deleteTranslator;
+
     public function __construct(private array $config)
     {
         $this->inflector = new Inflector($config);
@@ -32,6 +38,8 @@ class Prose
         $this->whereTranslator->setExistsTranslator($this->existsTranslator);
         $this->orderTranslator = new OrderTranslator($this->inflector, $config);
         $this->limitTranslator = new LimitTranslator($this->inflector, $config);
+        $this->updateTranslator = new UpdateTranslator($this->inflector, $config);
+        $this->deleteTranslator = new DeleteTranslator;
     }
 
     public function describe(EloquentBuilder $builder): string
@@ -43,9 +51,10 @@ class Prose
         $query = $builder->getQuery();
 
         $parts = [
-            'action' => $this->getAction($query),
+            'action' => $this->getAction($query, $builder),
             'model' => $this->getModelName($builder),
             'conditions' => $this->getConditions($query, $builder),
+            'updateFields' => $this->getUpdateFields($query, $builder),
             'relationships' => $this->getRelationships($builder),
             'ordering' => $this->getOrdering($query, $builder),
             'limit' => $this->getLimit($query),
@@ -54,7 +63,7 @@ class Prose
         return $this->buildSentence($parts);
     }
 
-    private function getAction(QueryBuilder $query): string
+    private function getAction(QueryBuilder $query, EloquentBuilder $builder): string
     {
         $aggregate = $query->aggregate ?? null;
 
@@ -62,11 +71,13 @@ class Prose
             $function = $aggregate['function'] ?? 'count';
 
             if ($function === 'update') {
-                return $this->config['actions']['update'] ?? 'Update';
+                // Use sophisticated UpdateTranslator for professional natural language
+                return $this->updateTranslator->translateUpdateAction($query, $builder);
             }
 
             if ($function === 'delete') {
-                return $this->config['actions']['delete'] ?? 'Delete';
+                // Use sophisticated DeleteTranslator for professional natural language
+                return $this->deleteTranslator->translateDeleteAction($query, $builder);
             }
 
             $columns = $aggregate['columns'] ?? [];
@@ -86,6 +97,17 @@ class Prose
         }
 
         return $this->config['actions']['select'] ?? 'Find';
+    }
+
+    private function getUpdateFields(QueryBuilder $query, EloquentBuilder $builder): string
+    {
+        $aggregate = $query->aggregate ?? null;
+
+        if ($aggregate && ($aggregate['function'] ?? '') === 'update') {
+            return $this->updateTranslator->translateUpdateFields($query, $builder);
+        }
+
+        return '';
     }
 
     private function getModelName(EloquentBuilder $builder): string
@@ -183,6 +205,11 @@ class Prose
     private function buildSentence(array $parts): string
     {
         $template = $this->config['sentence_template'];
+
+        // Handle UPDATE operations specially to insert field updates after conditions
+        if (! empty($parts['updateFields'])) {
+            $template = str_replace('{conditions}', '{conditions} to {updateFields}', $template);
+        }
 
         if (! empty($parts['limit'])) {
             [$template, $parts] = $this->repositionLimitToBeginning($template, $parts);

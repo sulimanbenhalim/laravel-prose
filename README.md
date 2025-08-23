@@ -18,7 +18,7 @@ composer require sulimanbenhalim/laravel-prose
 
 ```php
 User::where('created_at', '>', '2024-01-01')->describe();
-// → "Find users with created after January 1, 2024"
+// → "Find users created after January 1, 2024"
 
 Product::where('is_featured', true)
     ->orderBy('price_usd', 'desc')
@@ -49,8 +49,26 @@ Product::whereAny(['name', 'description'], 'like', '%laptop%')->describe();
 All query operations get natural descriptions:
 
 ```php
-Customer::where('email_verified_at', null)->describeUpdate();
-// → "Update customers with unverified email"
+Customer::where('status', 'banned')->describeDelete();
+// → "Delete customers with status is 'banned'"
+
+User::where('last_login_at', '<', now()->subYears(2))
+    ->whereNull('email_verified_at')
+    ->describeDelete();
+// → "Delete users with last login more than 2 years ago and with unverified email"
+
+Customer::where('email_verified_at', null)->describeUpdate(['email_verified_at' => now()]);
+// → "Update customers with unverified email to be verified"
+
+Product::where('stock_quantity_available', 0)
+    ->where('is_currently_available', true)
+    ->describeUpdate(['is_currently_available' => false]);
+// → "Update products with stock quantity available is 0 and that are currently available to not be currently available"
+
+Order::where('order_status', 'pending')
+    ->where('created_at', '<', now()->subHours(24))
+    ->describeUpdate(['order_status' => 'cancelled']);
+// → "Update orders with order status is 'pending' and created before yesterday to have cancelled order status"
 
 Product::where('stock_quantity_available', 0)->describeDelete();
 // → "Delete products with stock quantity available is 0"
