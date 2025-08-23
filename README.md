@@ -6,7 +6,7 @@
 
 > Laravel Eloquent queries → natural language descriptions
 
-![Demo](assets/demo.gif)
+![Laravel Prose Demo](assets/demo.gif)
 
 ## Install
 
