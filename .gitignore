@@ -19,3 +19,4 @@ Thumbs.db
 *.log
 /.phpstan.cache
 /.pint.cache
+demo.html

@@ -6,6 +6,8 @@
 
 > Laravel Eloquent queries → natural language descriptions
 
+![Demo](assets/demo.gif)
+
 ## Install
 
 ```bash
@@ -47,6 +49,8 @@ Product::whereAny(['name', 'description'], 'like', '%laptop%')->describe();
 ### Action Descriptions
 
 All query operations get natural descriptions:
+
+![Update Demo](assets/demo-update.gif)
 
 ```php
 Customer::where('status', 'banned')->describeDelete();
