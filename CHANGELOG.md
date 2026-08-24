@@ -2,6 +2,11 @@
 
 All notable changes to `laravel-prose` are documented here. The project follows [SemVer](https://semver.org); because this package's output *is* its contract, any change to generated description text ships as a major release.
 
+## 2.0.1 - 2026-08-24
+
+- Fix code style violations flagged by Laravel Pint 1.30 (imported Carbon classes instead of inline FQCNs) that failed CI on fresh dependency installs.
+- Update dev dependencies and bump `actions/checkout` to v4 in CI.
+
 ## 2.0.0 - 2026-08-24
 
 ### Fixed

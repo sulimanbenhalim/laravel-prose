@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SulimanBenhalim\Prose\Translators;
 
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder;
 use SulimanBenhalim\Prose\Support\BooleanFieldHandler;
 use SulimanBenhalim\Prose\Support\ExpressionHandler;
@@ -786,14 +788,14 @@ class WhereTranslator extends BaseTranslator
         return 'with '.($article ? "{$article} " : '')."{$related} {$condition}";
     }
 
-    private function toCarbonOrNull(mixed $value): ?\Carbon\CarbonInterface
+    private function toCarbonOrNull(mixed $value): ?CarbonInterface
     {
-        if ($value instanceof \Carbon\CarbonInterface) {
+        if ($value instanceof CarbonInterface) {
             return $value;
         }
 
         if ($value instanceof \DateTimeInterface) {
-            return \Carbon\Carbon::instance($value);
+            return Carbon::instance($value);
         }
 
         $string = is_scalar($value) || (is_object($value) && method_exists($value, '__toString')) ? (string) $value : '';
@@ -803,7 +805,7 @@ class WhereTranslator extends BaseTranslator
         }
 
         try {
-            return \Carbon\Carbon::parse($string);
+            return Carbon::parse($string);
         } catch (\Exception) {
             return null;
         }
