@@ -260,6 +260,7 @@ The package seamlessly integrates with Laravel's query builder through macros, a
 
 | Laravel Version | Package Version |
 |-----------------|-----------------|
+| 12.x            | 2.x             |
 | 12.x            | 1.x             |
 
 ## Security

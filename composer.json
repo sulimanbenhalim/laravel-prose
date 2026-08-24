@@ -1,6 +1,5 @@
 {
     "name": "sulimanbenhalim/laravel-prose",
-    "version": "1.0.0",
     "description": "Transform Laravel Eloquent queries into natural language prose",
     "type": "library",
     "keywords": [
