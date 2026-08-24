@@ -26,8 +26,8 @@ class VehicleRentalSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find vehicles', $description);
-        $this->assertStringContainsString("with fuel type is 'hybrid'", $description);
-        $this->assertStringContainsString("with transmission type is 'automatic'", $description);
+        $this->assertStringContainsString("whose fuel type is 'hybrid'", $description);
+        $this->assertStringContainsString("whose transmission type is 'automatic'", $description);
     }
 
     public function test_vehicles_by_price_range()
@@ -63,8 +63,8 @@ class VehicleRentalSystemTest extends TestCase
 
         $this->assertStringContainsString('Find vehicle bookings', $description);
         $this->assertStringContainsString('with driver license verified', $description);
-        $this->assertStringContainsString("with booking status is 'confirmed'", $description);
-        $this->assertStringContainsString('who have vehicles', $description);
+        $this->assertStringContainsString("whose booking status is 'confirmed'", $description);
+        $this->assertStringContainsString('who have a vehicle', $description);
     }
 
     public function test_upcoming_bookings()
@@ -76,8 +76,8 @@ class VehicleRentalSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find vehicle bookings', $description);
-        $this->assertStringContainsString('with booking start within the last minute', $description);
-        $this->assertStringContainsString("with payment status is 'paid'", $description);
+        $this->assertStringContainsString('with booking start in the future', $description);
+        $this->assertStringContainsString("whose payment status is 'paid'", $description);
         $this->assertStringContainsString('including their vehicle and customer', $description);
         $this->assertStringContainsString('sorted by booking start (oldest to newest)', $description);
     }

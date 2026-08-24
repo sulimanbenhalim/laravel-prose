@@ -603,6 +603,13 @@ class VerbInflector
             return $this->irregularVerbs[$verb];
         }
 
+        // Already a past participle (created, updated, scheduled, ...).
+        // Words like "need" or "embed" that genuinely end in -ed belong in
+        // the irregular map instead.
+        if (strlen($verb) > 3 && str_ends_with($verb, 'ed')) {
+            return $verb;
+        }
+
         if (preg_match('/^(.+[bcdfghjklmnpqrstvwxz])y$/', $verb, $matches)) {
             return $matches[1].'ied';
         }

@@ -35,7 +35,7 @@ return [
 
     'raw_fallback_text' => 'with custom database operations',
 
-    'truncation_indicator' => '...',
+    'truncation_indicator' => 'other conditions',
 
     'date_formats' => [
         'today' => 'today',

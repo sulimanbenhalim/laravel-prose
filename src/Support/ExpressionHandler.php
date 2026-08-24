@@ -73,33 +73,40 @@ class ExpressionHandler
 
         $relationshipNames = $this->extractRelationshipNamesFromExpression($expressionValue);
 
-        if (! empty($relationshipNames)) {
-            $humanizedNames = array_map(function ($name) {
-                return str_replace(['_', '-'], ' ', $name);
-            }, $relationshipNames);
-
-            $relationships = $this->inflector->joinWithConnector($humanizedNames, 'and');
-
-            $operator = $where['operator'] ?? '=';
-            $value = $where['value'] ?? 0;
-
-            $isPositive = $this->isPositiveRelationshipCondition($operator, $value);
-
-            if ($isPositive) {
-                return "who have {$relationships}";
-            } else {
-                return "who don't have {$relationships}";
-            }
+        if (empty($relationshipNames)) {
+            return 'with related records';
         }
 
-        return 'with related records';
+        // The FROM table of the count subquery is the relation being counted
+        $relation = str_replace(['_', '-'], ' ', $relationshipNames[0]);
+
+        $operator = $where['operator'] ?? '=';
+        $value = $where['value'] ?? 0;
+
+        if (is_object($value)) {
+            $extracted = $this->extractExpressionValue($value);
+            $value = is_numeric($extracted) ? (int) $extracted : 1;
+        }
+        $count = (int) $value;
+        $singular = $this->inflector->singularize($relation);
+        $counted = fn (int $n) => $n === 1 ? "one {$singular}" : "{$n} {$relation}";
+
+        return match ($operator) {
+            '>=' => $count <= 1 ? "who have {$relation}" : "who have at least {$counted($count)}",
+            '>' => $count === 0 ? "who have {$relation}" : "who have more than {$counted($count)}",
+            '=' => $count === 0 ? "who don't have {$relation}" : "who have exactly {$counted($count)}",
+            '!=', '<>' => $count === 0 ? "who have {$relation}" : "who don't have exactly {$counted($count)}",
+            '<' => $count <= 1 ? "who don't have {$relation}" : "who have fewer than {$counted($count)}",
+            '<=' => $count === 0 ? "who don't have {$relation}" : "who have at most {$counted($count)}",
+            default => "who have {$relation}",
+        };
     }
 
     public function buildConditionText(string $column, string $operator, mixed $value): string
     {
         return match ($operator) {
-            '=' => "with {$column} is {$this->formatValue($value)}",
-            '!=' => "with {$column} not equal to {$this->formatValue($value)}",
+            '=' => "whose {$column} is {$this->formatValue($value)}",
+            '!=', '<>' => "whose {$column} is not {$this->formatValue($value)}",
             '>' => "with {$column} greater than {$this->formatValue($value)}",
             '>=' => "with {$column} greater than or equal to {$this->formatValue($value)}",
             '<' => "with {$column} less than {$this->formatValue($value)}",
@@ -114,52 +121,24 @@ class ExpressionHandler
 
         if (preg_match_all('/from\s+["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?/i', $expression, $matches)) {
             foreach ($matches[1] as $tableName) {
-                if (! in_array(strtolower($tableName), Constants::SYSTEM_TABLES)) {
+                if (! in_array(strtolower($tableName), Constants::SYSTEM_TABLES)
+                    && ! str_starts_with(strtolower($tableName), 'laravel_reserved')) {
                     $tableNames[] = $tableName;
                 }
             }
         }
 
-        if (preg_match_all('/["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?\.["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?/i', $expression, $matches)) {
+        if (empty($tableNames) && preg_match_all('/["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?\.["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?/i', $expression, $matches)) {
             foreach ($matches[1] as $tableName) {
                 if (! in_array($tableName, $tableNames) &&
-                    ! in_array(strtolower($tableName), Constants::SYSTEM_TABLES)) {
+                    ! in_array(strtolower($tableName), Constants::SYSTEM_TABLES) &&
+                    ! str_starts_with(strtolower($tableName), 'laravel_reserved')) {
                     $tableNames[] = $tableName;
                 }
             }
         }
 
         return array_unique($tableNames);
-    }
-
-    private function isPositiveRelationshipCondition(string $operator, mixed $value): bool
-    {
-        if (is_object($value)) {
-            $expressionValue = $this->extractExpressionValue($value);
-            if ($expressionValue && is_numeric($expressionValue)) {
-                $value = (int) $expressionValue;
-            } else {
-                return true;
-            }
-        } else {
-            $value = (int) $value;
-        }
-
-        switch ($operator) {
-            case '>':
-            case '>=':
-                return $value >= 0;
-            case '=':
-                return $value > 0;
-            case '<':
-            case '<=':
-                return $value < 0;
-            case '!=':
-            case '<>':
-                return $value == 0;
-            default:
-                return true;
-        }
     }
 
     private function formatValue(mixed $value): string

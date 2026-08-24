@@ -23,7 +23,7 @@ abstract class BaseTranslator
         protected array $config
     ) {
         $this->fieldTypeDetector = new FieldTypeDetector;
-        $this->operatorTranslator = new OperatorTranslator;
+        $this->operatorTranslator = new OperatorTranslator($this->inflector);
         $this->dateTimeHandler = new DateTimeHandler($this->inflector, $this->fieldTypeDetector);
     }
 
@@ -31,29 +31,17 @@ abstract class BaseTranslator
 
     protected function formatValue(mixed $value): string
     {
-        if (is_string($value)) {
-            return "'{$value}'";
-        }
-
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-
-        if (is_null($value)) {
-            return 'null';
-        }
-
-        if (is_array($value)) {
-            $formatted = array_map([$this, 'formatValue'], $value);
-
-            return '['.implode(', ', $formatted).']';
-        }
-
-        return (string) $value;
+        return $this->inflector->formatValue($value);
     }
 
     protected function formatInValues(array $values): string
     {
+        if (count($values) > 6) {
+            $shown = array_map([$this, 'formatValue'], array_slice($values, 0, 5));
+
+            return implode(', ', $shown).', or '.(count($values) - 5).' more';
+        }
+
         $formatted = array_map([$this, 'formatValue'], $values);
 
         if (count($formatted) <= 2) {
@@ -65,23 +53,17 @@ abstract class BaseTranslator
 
     protected function formatTimeValue(mixed $timeValue): string
     {
-        try {
-            if (is_string($timeValue)) {
-                if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $timeValue, $matches)) {
-                    $hour = (int) $matches[1];
-                    $minute = (int) $matches[2];
+        if (is_string($timeValue) && preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $timeValue, $matches)) {
+            $hour = (int) $matches[1];
+            $minute = (int) $matches[2];
 
-                    $ampm = $hour >= 12 ? 'PM' : 'AM';
-                    $displayHour = $hour === 0 ? 12 : ($hour > 12 ? $hour - 12 : $hour);
+            $ampm = $hour >= 12 ? 'PM' : 'AM';
+            $displayHour = $hour === 0 ? 12 : ($hour > 12 ? $hour - 12 : $hour);
 
-                    return sprintf('%d:%02d %s', $displayHour, $minute, $ampm);
-                }
-            }
-
-            return "'{$timeValue}'";
-        } catch (\Exception) {
-            return "'{$timeValue}'";
+            return sprintf('%d:%02d %s', $displayHour, $minute, $ampm);
         }
+
+        return "'{$timeValue}'";
     }
 
     protected function formatMonthValue(mixed $monthValue): string
@@ -101,49 +83,36 @@ abstract class BaseTranslator
         $pattern = (string) $value;
 
         if ($operator === 'like') {
+            $verbByShape = null;
             if (preg_match('/^%(.+)%$/', $pattern, $matches)) {
-                $content = $matches[1];
-
-                return match ($type) {
-                    'any' => "whose {$this->buildEitherOrList($columns)} contain '{$content}'",
-                    'all' => "whose {$this->buildBothAndList($columns)} contain '{$content}'",
-                    'none' => "whose {$this->buildNeitherNorList($columns)} contain '{$content}'",
-                    default => "whose {$this->buildEitherOrList($columns)} contain '{$content}'",
-                };
+                $verbByShape = ['contain', $matches[1]];
+            } elseif (preg_match('/^(.+)%$/', $pattern, $matches)) {
+                $verbByShape = ['start with', $matches[1]];
+            } elseif (preg_match('/^%(.+)$/', $pattern, $matches)) {
+                $verbByShape = ['end with', $matches[1]];
             }
 
-            if (preg_match('/^(.+)%$/', $pattern, $matches)) {
-                $content = $matches[1];
+            if ($verbByShape !== null) {
+                [$verb, $content] = $verbByShape;
+                $list = $this->buildColumnList($type, $columns);
 
-                return match ($type) {
-                    'any' => "whose {$this->buildEitherOrList($columns)} start with '{$content}'",
-                    'all' => "whose {$this->buildBothAndList($columns)} start with '{$content}'",
-                    'none' => "whose {$this->buildNeitherNorList($columns)} start with '{$content}'",
-                    default => "whose {$this->buildEitherOrList($columns)} start with '{$content}'",
-                };
-            }
-
-            if (preg_match('/^%(.+)$/', $pattern, $matches)) {
-                $content = $matches[1];
-
-                return match ($type) {
-                    'any' => "whose {$this->buildEitherOrList($columns)} end with '{$content}'",
-                    'all' => "whose {$this->buildBothAndList($columns)} end with '{$content}'",
-                    'none' => "whose {$this->buildNeitherNorList($columns)} end with '{$content}'",
-                    default => "whose {$this->buildEitherOrList($columns)} end with '{$content}'",
-                };
+                return "whose {$list} {$verb} '{$content}'";
             }
         }
 
-        // Handle exact match
         $valueDescription = $this->formatValue($value);
         $operatorText = $this->operatorTranslator->translateBasicOperator($operator);
+        $list = $this->buildColumnList($type, $columns);
 
+        return "whose {$list} {$operatorText} {$valueDescription}";
+    }
+
+    private function buildColumnList(string $type, array $columns): string
+    {
         return match ($type) {
-            'any' => "whose {$this->buildEitherOrList($columns)} {$operatorText} {$valueDescription}",
-            'all' => "whose {$this->buildBothAndList($columns)} {$operatorText} {$valueDescription}",
-            'none' => "whose {$this->buildNeitherNorList($columns)} {$operatorText} {$valueDescription}",
-            default => "whose {$this->buildEitherOrList($columns)} {$operatorText} {$valueDescription}",
+            'all' => $this->buildBothAndList($columns),
+            'none' => $this->buildNeitherNorList($columns),
+            default => $this->buildEitherOrList($columns),
         };
     }
 
@@ -179,8 +148,8 @@ abstract class BaseTranslator
     protected function isJoinCondition(array $where): bool
     {
         if ($where['type'] === 'Column') {
-            $first = $where['first'] ?? '';
-            $second = $where['second'] ?? '';
+            $first = is_string($where['first'] ?? null) ? $where['first'] : '';
+            $second = is_string($where['second'] ?? null) ? $where['second'] : '';
             $operator = $where['operator'] ?? '';
 
             return $operator === '=' &&
@@ -191,7 +160,7 @@ abstract class BaseTranslator
         }
 
         if ($where['type'] === 'Basic') {
-            $column = $where['column'] ?? '';
+            $column = is_string($where['column'] ?? null) ? $where['column'] : '';
             $value = $where['value'] ?? '';
 
             return str_contains($column, '.') &&
@@ -204,7 +173,7 @@ abstract class BaseTranslator
 
     protected function isComplexQueryExpression(array $where): bool
     {
-        if ($where['type'] !== 'Expression') {
+        if (strtolower($where['type']) !== 'expression') {
             return false;
         }
 
@@ -225,15 +194,26 @@ abstract class BaseTranslator
 
     protected function extractExpressionValue($expression): ?string
     {
+        if (is_string($expression)) {
+            return $expression;
+        }
+
+        if (! is_object($expression)) {
+            return null;
+        }
+
         if (method_exists($expression, '__toString')) {
             return (string) $expression;
         }
 
-        if (method_exists($expression, 'getValue')) {
-            return (string) $expression->getValue();
-        }
+        try {
+            $reflection = new \ReflectionProperty($expression, 'value');
+            $value = $reflection->getValue($expression);
 
-        return null;
+            return is_string($value) ? $value : (string) $value;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     protected function looksLikeDate(string $value): bool
@@ -243,7 +223,16 @@ abstract class BaseTranslator
 
     protected function areBothCarbonDates($start, $end): bool
     {
-        return $this->looksLikeDate((string) $start) && $this->looksLikeDate((string) $end);
+        $stringable = fn ($value) => $value instanceof \DateTimeInterface
+            || is_string($value)
+            || (is_object($value) && method_exists($value, '__toString'));
+
+        if (! $stringable($start) || ! $stringable($end)) {
+            return false;
+        }
+
+        return ($start instanceof \DateTimeInterface || $this->looksLikeDate((string) $start))
+            && ($end instanceof \DateTimeInterface || $this->looksLikeDate((string) $end));
     }
 
     protected function detectMultiColumnPattern(array $where, array $nestedWheres): ?string
@@ -253,16 +242,23 @@ abstract class BaseTranslator
         }
 
         $firstWhere = $nestedWheres[0];
-        if ($firstWhere['type'] !== 'Basic') {
+        if ($firstWhere['type'] !== 'Basic' || ! is_string($firstWhere['column'] ?? null)) {
             return null;
         }
 
         $operator = $firstWhere['operator'];
         $value = $firstWhere['value'];
+
+        // Boolean flags sharing a value is a coincidence, not a multi-column
+        // search — leave those to per-condition phrasing.
+        if (is_bool($value) || $value === null) {
+            return null;
+        }
         $columns = [];
 
         foreach ($nestedWheres as $nestedWhere) {
             if ($nestedWhere['type'] !== 'Basic' ||
+                ! is_string($nestedWhere['column'] ?? null) ||
                 $nestedWhere['operator'] !== $operator ||
                 $nestedWhere['value'] !== $value) {
                 return null;
@@ -278,11 +274,11 @@ abstract class BaseTranslator
         $nestedBoolean = strtolower($nestedWheres[0]['boolean'] ?? 'and');
 
         if ($nestedBoolean === 'or') {
-            if ($boolean === 'and not') {
+            if (str_contains($boolean, 'not')) {
                 return $this->buildMultiColumnDescription('none', $columns, $operator, $value);
-            } else {
-                return $this->buildMultiColumnDescription('any', $columns, $operator, $value);
             }
+
+            return $this->buildMultiColumnDescription('any', $columns, $operator, $value);
         }
 
         if ($nestedBoolean === 'and') {
@@ -290,37 +286,5 @@ abstract class BaseTranslator
         }
 
         return null;
-    }
-
-    protected function getValueDescription(string $operator, mixed $value): string
-    {
-        if ($operator === 'like') {
-            $pattern = (string) $value;
-
-            if (preg_match('/^%(.+)%$/', $pattern, $matches)) {
-                return "containing '{$matches[1]}'";
-            }
-            if (preg_match('/^%(.+)$/', $pattern, $matches)) {
-                return "ending with '{$matches[1]}'";
-            }
-            if (preg_match('/^(.+)%$/', $pattern, $matches)) {
-                return "starting with '{$matches[1]}'";
-            }
-
-            return "matching {$this->formatValue($pattern)}";
-        }
-
-        $formattedValue = $this->formatValue($value);
-
-        return match ($operator) {
-            '=' => "= {$formattedValue}",
-            '!=' => "!= {$formattedValue}",
-            '>' => "> {$formattedValue}",
-            '>=' => ">= {$formattedValue}",
-            '<' => "< {$formattedValue}",
-            '<=' => "<= {$formattedValue}",
-            'not like' => "not like {$formattedValue}",
-            default => "{$operator} {$formattedValue}",
-        };
     }
 }

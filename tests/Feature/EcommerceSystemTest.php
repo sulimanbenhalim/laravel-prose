@@ -42,7 +42,7 @@ class EcommerceSystemTest extends TestCase
         $this->assertStringContainsString('stock quantity available less than or equal to 5', $description);
         $this->assertStringContainsString('minimum stock threshold greater than 10', $description);
         $this->assertStringContainsString('that are currently available', $description);
-        $this->assertStringContainsString('who have product categories', $description);
+        $this->assertStringContainsString('who have a category that is a featured category', $description);
     }
 
     public function test_high_value_orders_with_express_shipping(): void
@@ -57,7 +57,7 @@ class EcommerceSystemTest extends TestCase
         $this->assertStringContainsString('total amount in USD greater than 500', $description);
         $this->assertStringContainsString('with express shipping requested', $description);
         $this->assertStringContainsString('order status is', $description);
-        $this->assertStringContainsString('estimated delivery in the next', $description);
+        $this->assertStringContainsString('estimated delivery on or before', $description);
     }
 
     public function test_heavy_products_requiring_special_shipping(): void
@@ -69,8 +69,8 @@ class EcommerceSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find products', $description);
-        $this->assertStringContainsString('weight kg greater than 10', $description);
-        $this->assertStringContainsString('with requires shipping', $description);
+        $this->assertStringContainsString('weight in kg greater than 10', $description);
+        $this->assertStringContainsString('that require shipping', $description);
         $this->assertStringContainsString('price in USD less than 200', $description);
     }
 
@@ -89,8 +89,8 @@ class EcommerceSystemTest extends TestCase
         $this->assertStringContainsString('that are gift order', $description);
         $this->assertStringContainsString('with special instructions', $description);
         $this->assertStringContainsString('payment method is', $description);
-        $this->assertStringContainsString('who have customer', $description);
-        $this->assertStringContainsString('including their customer and order items product', $description);
+        $this->assertStringContainsString('who have a customer that is a premium member', $description);
+        $this->assertStringContainsString('including their customer and order items and their product', $description);
     }
 
     public function test_profitable_products_with_high_margins(): void
@@ -104,7 +104,7 @@ class EcommerceSystemTest extends TestCase
 
         $this->assertStringContainsString('Find products', $description);
         $this->assertStringContainsString('stock quantity available greater than 50', $description);
-        $this->assertStringContainsString('who have order items', $description);
+        $this->assertStringContainsString('who have more than 5 order items', $description);
     }
 
     public function test_inactive_customers_needing_re_engagement(): void
@@ -134,9 +134,9 @@ class EcommerceSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find product categories', $description);
-        $this->assertStringContainsString('that are featured category', $description);
-        $this->assertStringContainsString('who have products', $description);
-        $this->assertStringContainsString('sorted by display order (A to Z)', $description);
+        $this->assertStringContainsString('that are featured categories', $description);
+        $this->assertStringContainsString('who have more than 10 products', $description);
+        $this->assertStringContainsString('sorted by display order (lowest to highest)', $description);
     }
 
     public function test_bulk_order_items_with_discounts(): void
@@ -151,7 +151,7 @@ class EcommerceSystemTest extends TestCase
 
         $this->assertStringContainsString('Find order items', $description);
         $this->assertStringContainsString('quantity ordered greater than 20', $description);
-        $this->assertStringContainsString('who have order', $description);
+        $this->assertStringContainsString('who have an order', $description);
     }
 
     public function test_cancelled_orders_requiring_investigation(): void

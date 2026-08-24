@@ -65,14 +65,14 @@ class InflectorTest extends TestCase
 
     public function test_humanize_field_name_with_laravel_attributes(): void
     {
-        $this->assertEquals('created', $this->inflector->humanizeFieldName('created_at'));
-        $this->assertEquals('updated', $this->inflector->humanizeFieldName('updated_at'));
-        $this->assertEquals('email verified verification', $this->inflector->humanizeFieldName('email_verified_at'));
+        $this->assertEquals('created at', $this->inflector->humanizeFieldName('created_at'));
+        $this->assertEquals('updated at', $this->inflector->humanizeFieldName('updated_at'));
+        $this->assertEquals('email verification', $this->inflector->humanizeFieldName('email_verified_at'));
     }
 
     public function test_humanize_field_name_without_aliases(): void
     {
-        $this->assertEquals('user id', $this->inflector->humanizeFieldName('user_id'));
+        $this->assertEquals('user ID', $this->inflector->humanizeFieldName('user_id'));
         $this->assertEquals('email address', $this->inflector->humanizeFieldName('email_address'));
     }
 
@@ -101,8 +101,8 @@ class InflectorTest extends TestCase
         $threeDaysAgo = Carbon::now()->subDays(3)->toDateString();
         $result = $this->inflector->humanizeDate($threeDaysAgo);
         $this->assertTrue(
-            str_contains($result, 'within the last') && str_contains($result, 'days'),
-            "Expected relative time phrase with 'within the last' and 'days', got: {$result}"
+            str_contains($result, 'days ago'),
+            "Expected relative time phrase with 'days ago', got: {$result}"
         );
     }
 

@@ -18,8 +18,8 @@ class HRProjectManagementSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find employees', $description);
-        $this->assertStringContainsString("with employment status is 'active'", $description);
-        $this->assertStringContainsString("with department is 'Engineering'", $description);
+        $this->assertStringContainsString("whose employment status is 'active'", $description);
+        $this->assertStringContainsString("whose department is 'Engineering'", $description);
     }
 
     public function test_employees_by_salary_and_experience()
@@ -54,9 +54,9 @@ class HRProjectManagementSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find projects', $description);
-        $this->assertStringContainsString("with project status is 'in_progress'", $description);
+        $this->assertStringContainsString("whose project status is 'in_progress'", $description);
         $this->assertStringContainsString('with budget in USD greater than 100000', $description);
-        $this->assertStringContainsString('with deadline', $description);
+        $this->assertStringContainsString('with deadline date in the future', $description);
     }
 
     public function test_overdue_projects_by_priority()
@@ -68,10 +68,10 @@ class HRProjectManagementSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find projects', $description);
-        $this->assertStringContainsString('with deadline more than minute ago', $description);
-        $this->assertStringContainsString('with project status not equal to', $description);
+        $this->assertStringContainsString('with deadline date in the past', $description);
+        $this->assertStringContainsString("whose project status is not 'completed'", $description);
         $this->assertStringContainsString('with priority level being one of', $description);
-        $this->assertStringContainsString('sorted by deadline (oldest to newest)', $description);
+        $this->assertStringContainsString('sorted by deadline date (oldest to newest)', $description);
     }
 
     public function test_recent_timesheet_entries()
@@ -82,7 +82,7 @@ class HRProjectManagementSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find timesheets', $description);
-        $this->assertStringContainsString('with work within the last', $description);
+        $this->assertStringContainsString('with work date within the last', $description);
         $this->assertStringContainsString('with hours worked greater than 8', $description);
         $this->assertStringContainsString('with a task description', $description);
     }
@@ -99,7 +99,7 @@ class HRProjectManagementSystemTest extends TestCase
 
         $this->assertStringContainsString('Find employees', $description);
         $this->assertStringContainsString('who have projects', $description);
-        $this->assertStringContainsString("with employment status is 'active'", $description);
+        $this->assertStringContainsString("whose employment status is 'active'", $description);
         $this->assertStringContainsString('including their projects and timesheets', $description);
     }
 
@@ -116,9 +116,9 @@ class HRProjectManagementSystemTest extends TestCase
 
         $this->assertStringContainsString('Find projects', $description);
         $this->assertStringContainsString('who have timesheets', $description);
-        $this->assertStringContainsString("with project status is 'in_progress'", $description);
+        $this->assertStringContainsString("whose project status is 'in_progress'", $description);
         $this->assertStringContainsString('including their timesheets', $description);
-        $this->assertStringContainsString('sorted by start (newest to oldest)', $description);
+        $this->assertStringContainsString('sorted by start date (newest to oldest)', $description);
     }
 
     public function test_high_performing_team_analysis()

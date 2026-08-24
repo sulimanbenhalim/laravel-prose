@@ -54,7 +54,7 @@ All query operations get natural descriptions:
 
 ```php
 Customer::where('status', 'banned')->describeDelete();
-// → "Delete customers with status is 'banned'"
+// → "Delete customers whose status is 'banned'"
 
 User::where('last_login_at', '<', now()->subYears(2))
     ->whereNull('email_verified_at')
@@ -67,21 +67,21 @@ Customer::where('email_verified_at', null)->describeUpdate(['email_verified_at' 
 Product::where('stock_quantity_available', 0)
     ->where('is_currently_available', true)
     ->describeUpdate(['is_currently_available' => false]);
-// → "Update products with stock quantity available is 0 and that are currently available to not be currently available"
+// → "Update products whose stock quantity available is 0 and that are currently available to not be currently available"
 
 Order::where('order_status', 'pending')
     ->where('created_at', '<', now()->subHours(24))
     ->describeUpdate(['order_status' => 'cancelled']);
-// → "Update orders with order status is 'pending' and created before yesterday to have cancelled order status"
+// → "Update orders whose order status is 'pending' and created more than 24 hours ago to have cancelled order status"
 
 Product::where('stock_quantity_available', 0)->describeDelete();
-// → "Delete products with stock quantity available is 0"
+// → "Delete products whose stock quantity available is 0"
 
 Order::where('order_status', 'completed')->describeSum('total_amount_usd');
-// → "Sum total amount in USD for orders with order status is 'completed'"
+// → "Sum total amount in USD for orders whose order status is 'completed'"
 
 Customer::where('is_premium_member', true)->describeAvg('total_lifetime_spending_usd');
-// → "Average total lifetime spending in USD for customers that are premium member"
+// → "Average total lifetime spending in USD for customers that are premium members"
 ```
 
 ### Relationship Intelligence
@@ -96,7 +96,7 @@ Customer::whereDoesntHave('orders')->describe();
 Order::where('order_status', 'shipped')
     ->with('customer', 'products')
     ->describe();
-// → "Find orders with order status is 'shipped' including their customer and products"
+// → "Find orders whose order status is 'shipped' including their customer and products"
 ```
 
 ## Time Intelligence
@@ -110,15 +110,23 @@ Order::where('order_status', 'shipped')
 | `today()` | "today" |
 | `'2024-01-01'` | "January 1, 2024" |
 
+Comparisons keep their meaning: `where('created_at', '>', now()->subDays(7))` reads
+"created within the last 7 days" while `'<'` reads "created more than 7 days ago",
+`whereDate(..., '>=', today())` reads "today or later", and `where('ends_at', '<', now())`
+reads "in the past". Descriptions never depend on the time of day the code runs.
+
 ## Field Intelligence
 
 ### Boolean Detection
 ```php
 Customer::where('is_premium_member', true)->describe();
-// → "Find customers that are premium member"
+// → "Find customers that are premium members"
 
 Product::where('has_warranty', false)->describe();  
 // → "Find products that don't have warranty"
+
+Product::where('requires_shipping', true)->describe();
+// → "Find products that require shipping"
 ```
 
 ### Laravel Timestamps
@@ -200,7 +208,7 @@ Product::where('is_featured', true)
     ->describe();
 
 // → "Find first 20 products that are featured, with stock quantity available 
-//    greater than 0 and who have product reviews with rating greater than or equal to 4 
+//    greater than 0 and who have reviews with rating greater than or equal to 4 
 //    including their category and reviews sorted by sales count (highest to lowest)"
 ```
 
@@ -214,7 +222,7 @@ Customer::where('is_premium_member', true)
     ->orderBy('total_lifetime_spending_usd', 'desc')
     ->describe();
 
-// → "Find customers that are premium member, with last login within the last 7 days 
+// → "Find customers that are premium members, with last login within the last 7 days 
 //    and with verified email including their subscriptions sorted by total lifetime 
 //    spending in USD (highest to lowest)"
 ```
@@ -224,7 +232,7 @@ Customer::where('is_premium_member', true)
 The package seamlessly integrates with Laravel's query builder through macros, automatically detecting:
 
 - **Model casts** for boolean/date field detection
-- **Database schema** via Doctrine DBAL for precise field types  
+- **Database schema** via Laravel's native schema introspection (cached per table)
 - **Laravel conventions** for timestamp and relationship naming
 - **Carbon operations** for intelligent time phrase generation
 - **Doctrine Inflector** for proper pluralization and word transformations
@@ -232,8 +240,21 @@ The package seamlessly integrates with Laravel's query builder through macros, a
 ## Performance
 
 - **Zero query execution** - descriptions are generated from builder state
+- **Fast** - roughly 85µs per description (~12,000 describes/sec on a laptop); schema and field-name lookups are cached
 - **Configurable limits** prevent description overflow
 - **Lazy evaluation** - only processes when `describe()` is called
+
+## Quality guarantees
+
+- Every README example is asserted byte-for-byte in `tests/Feature/ReadmeExamplesTest.php`
+- A corpus of 750+ realistic queries across ten business domains runs through the
+  engine under three frozen clock anchors (`tests/Corpus/`); any leaked column name,
+  broken grammar, dropped negation, or output that changes with the time of day
+  fails the build
+- OR conditions, `whereNot`, `whereNotBetween`, `whereLike`, `whereJsonLength`,
+  `whereIntegerInRaw`, `whereBetweenColumns`, `has('relation', '>=', N)` counts,
+  self-referential and `belongsTo` `whereHas`, and `groupBy`/`having` are all
+  translated faithfully - negations and disjunctions are never silently dropped
 
 ## Laravel Version Compatibility
 

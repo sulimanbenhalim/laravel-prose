@@ -6,107 +6,51 @@ namespace SulimanBenhalim\Prose\Support;
 
 class FieldTypeDetector
 {
-    public function __construct() {}
+    /** @var array<string, array<string, string>> per-connection+table column => type_name */
+    private static array $schemaCache = [];
 
     public function isDateField(string $fieldName, $builder = null): bool
     {
-        // Check common Laravel timestamp fields first
-        if (in_array($fieldName, ['created_at', 'updated_at', 'deleted_at', 'email_verified_at', 'last_used_at'])) {
+        if ($this->isLaravelTimestampField($fieldName)) {
             return true;
         }
 
-        // Check using builder if available
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                // Check model casts for date types
-                $casts = $model->getCasts();
-                if (isset($casts[$fieldName])) {
-                    $castType = strtolower($casts[$fieldName]);
-                    $castType = explode(':', $castType)[0];
-
-                    if (in_array($castType, ['date', 'datetime', 'timestamp', 'time'])) {
-                        return true;
-                    }
-                }
-
-                // Check database schema using Doctrine DBAL
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $fieldName)->getType();
-
-                if ($columnType) {
-                    $typeName = $columnType->getName();
-                    if (in_array($typeName, ['date', 'datetime', 'datetimetz', 'time', 'timestamp'])) {
-                        return true;
-                    }
-                }
-            } catch (\Exception $e) {
-                // Schema inspection failed, fall through to pattern matching
-            }
+        $cast = $this->castType($fieldName, $builder);
+        if ($cast !== null) {
+            return in_array($cast, ['date', 'datetime', 'timestamp', 'time', 'immutable_date', 'immutable_datetime'], true);
         }
 
-        // Fallback to pattern matching
+        $schemaType = $this->schemaType($fieldName, $builder);
+        if ($schemaType !== null) {
+            return in_array($schemaType, ['date', 'datetime', 'datetimetz', 'time', 'timestamp'], true);
+        }
+
         return (bool) preg_match('/(date|time|at)$/i', $fieldName);
     }
 
     public function isBooleanField(string $fieldName, $builder = null): bool
     {
-        // Check using builder if available
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                // Check model casts first
-                $casts = $model->getCasts();
-                if (isset($casts[$fieldName]) && $casts[$fieldName] === 'boolean') {
-                    return true;
-                }
-
-                // Check database schema
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $fieldName)->getType();
-
-                if ($columnType && class_exists('\Doctrine\DBAL\Types\BooleanType') && $columnType instanceof \Doctrine\DBAL\Types\BooleanType) {
-                    return true;
-                }
-            } catch (\Exception $e) {
-                // Schema inspection failed, fall through to pattern matching
-            }
+        $cast = $this->castType($fieldName, $builder);
+        if ($cast === 'boolean' || $cast === 'bool') {
+            return true;
         }
 
-        // Fallback to pattern matching
-        return (bool) preg_match('/^(is|has|can|should|will|was|were)_/', $fieldName);
+        return (bool) preg_match('/^(is|has|can|should|will|was|were|requires|needs|allows|accepts|supports)_/', $fieldName);
     }
 
     public function getFieldType(string $fieldName, $builder = null): string
     {
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                // Check model casts first
-                $casts = $model->getCasts();
-                if (isset($casts[$fieldName])) {
-                    return $this->normalizeCastType($casts[$fieldName]);
-                }
-
-                // Check database schema
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $fieldName)->getType();
-
-                if ($columnType) {
-                    return $this->normalizeDoctrineType($columnType);
-                }
-            } catch (\Exception $e) {
-                // Schema inspection failed, return default
-            }
+        $cast = $this->castType($fieldName, $builder);
+        if ($cast !== null) {
+            return $this->normalizeCastType($cast);
         }
 
-        return 'string'; // Default fallback
+        $schemaType = $this->schemaType($fieldName, $builder);
+        if ($schemaType !== null) {
+            return $this->normalizeSchemaType($schemaType);
+        }
+
+        return 'string';
     }
 
     public function isNumericField(string $fieldName, $builder = null): bool
@@ -121,49 +65,86 @@ class FieldTypeDetector
         return (bool) preg_match('/_(usd|eur|gbp|jpy|cad|aud)$/i', $fieldName);
     }
 
-    public function isLaravelTimestampField(string $fieldName): bool
+    public function isLaravelTimestampField(?string $fieldName): bool
     {
         return in_array($fieldName, [
             'created_at', 'updated_at', 'deleted_at',
             'email_verified_at', 'last_used_at', 'remember_token_expires_at',
-        ]);
+        ], true);
     }
 
-    private function normalizeCastType(string $castType): string
+    private function castType(string $fieldName, $builder): ?string
     {
-        $castType = strtolower($castType);
-        $baseType = explode(':', $castType)[0];
+        if (! $builder || ! method_exists($builder, 'getModel')) {
+            return null;
+        }
 
+        try {
+            $casts = $builder->getModel()->getCasts();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (! isset($casts[$fieldName])) {
+            return null;
+        }
+
+        return explode(':', strtolower($casts[$fieldName]))[0];
+    }
+
+    private function schemaType(string $fieldName, $builder): ?string
+    {
+        if (! $builder || ! method_exists($builder, 'getModel')) {
+            return null;
+        }
+
+        try {
+            $model = $builder->getModel();
+            $connection = $model->getConnection();
+            $key = $connection->getName().'.'.$model->getTable();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (! array_key_exists($key, self::$schemaCache)) {
+            try {
+                $columns = $connection->getSchemaBuilder()->getColumns($model->getTable());
+                $types = [];
+                foreach ($columns as $column) {
+                    $types[$column['name']] = strtolower($column['type_name'] ?? $column['type'] ?? '');
+                }
+                self::$schemaCache[$key] = $types;
+            } catch (\Throwable) {
+                self::$schemaCache[$key] = [];
+            }
+        }
+
+        return self::$schemaCache[$key][$fieldName] ?? null;
+    }
+
+    private function normalizeCastType(string $baseType): string
+    {
         return match ($baseType) {
             'int', 'integer' => 'integer',
             'real', 'float', 'double' => 'float',
             'decimal' => 'decimal',
-            'datetime', 'timestamp' => 'datetime',
-            'date' => 'date',
+            'datetime', 'timestamp', 'immutable_datetime' => 'datetime',
+            'date', 'immutable_date' => 'date',
+            'bool', 'boolean' => 'boolean',
             default => 'string',
         };
     }
 
-    private function normalizeDoctrineType($doctrineType): string
+    private function normalizeSchemaType(string $typeName): string
     {
-        $typeName = strtolower(get_class($doctrineType));
-
-        if (str_contains($typeName, 'integer') || str_contains($typeName, 'bigint')) {
-            return 'integer';
-        }
-
-        if (str_contains($typeName, 'decimal') || str_contains($typeName, 'float')) {
-            return 'decimal';
-        }
-
-        if (str_contains($typeName, 'datetime') || str_contains($typeName, 'timestamp')) {
-            return 'datetime';
-        }
-
-        if (str_contains($typeName, 'date')) {
-            return 'date';
-        }
-
-        return 'string';
+        return match (true) {
+            str_contains($typeName, 'bigint'), str_contains($typeName, 'integer'), $typeName === 'int' => 'integer',
+            str_contains($typeName, 'decimal'), str_contains($typeName, 'numeric') => 'decimal',
+            str_contains($typeName, 'float'), str_contains($typeName, 'double'), str_contains($typeName, 'real') => 'float',
+            str_contains($typeName, 'datetime'), str_contains($typeName, 'timestamp') => 'datetime',
+            $typeName === 'date' => 'date',
+            str_contains($typeName, 'bool') => 'boolean',
+            default => 'string',
+        };
     }
 }

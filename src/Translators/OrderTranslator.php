@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace SulimanBenhalim\Prose\Translators;
 
+use SulimanBenhalim\Prose\Support\FieldTypeDetector;
 use SulimanBenhalim\Prose\Support\Inflector;
 
 class OrderTranslator
 {
+    private FieldTypeDetector $fieldTypeDetector;
+
     public function __construct(
         private Inflector $inflector,
         private array $config
-    ) {}
+    ) {
+        $this->fieldTypeDetector = new FieldTypeDetector;
+    }
 
     public function translate(array $orders, $builder = null): string
     {
@@ -20,8 +25,17 @@ class OrderTranslator
         }
 
         $orderPhrases = [];
+        $random = false;
 
         foreach ($orders as $order) {
+            if (! isset($order['column']) || ! is_string($order['column'])) {
+                if ($this->isRandomOrder($order)) {
+                    $random = true;
+                }
+
+                continue;
+            }
+
             $phrase = $this->translateSingleOrder($order, $builder);
             if ($phrase) {
                 $orderPhrases[] = $phrase;
@@ -29,12 +43,19 @@ class OrderTranslator
         }
 
         if (empty($orderPhrases)) {
-            return '';
+            return $random ? 'in random order' : '';
         }
 
         $connector = $this->config['connectors']['ordering'] ?? 'sorted by';
 
         return $connector.' '.$this->inflector->joinWithConnector($orderPhrases, 'then');
+    }
+
+    private function isRandomOrder(array $order): bool
+    {
+        $sql = strtolower((string) ($order['sql'] ?? ''));
+
+        return str_contains($sql, 'random') || str_contains($sql, 'rand(');
     }
 
     private function translateSingleOrder(array $order, $builder = null): string
@@ -98,106 +119,11 @@ class OrderTranslator
 
     private function getFieldType(string $fieldName, $builder = null): string
     {
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                $casts = $model->getCasts();
-                if (isset($casts[$fieldName])) {
-                    return $this->normalizeCastType($casts[$fieldName]);
-                }
-
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $fieldName)->getType();
-
-                if ($columnType) {
-                    return $this->normalizeDoctrineType($columnType);
-                }
-
-            } catch (\Exception $e) {
-                // Schema inspection failed, return default
-            }
-        }
-
-        return 'string';
-    }
-
-    private function normalizeCastType(string $castType): string
-    {
-        $castType = strtolower($castType);
-
-        $baseType = explode(':', $castType)[0];
-
-        return match ($baseType) {
-            'int', 'integer' => 'integer',
-            'real', 'float', 'double' => 'float',
-            'decimal' => 'decimal',
-            'datetime', 'timestamp' => 'datetime',
-            'date' => 'date',
-            default => 'string',
-        };
-    }
-
-    private function normalizeDoctrineType($doctrineType): string
-    {
-        $typeName = strtolower(get_class($doctrineType));
-
-        if (str_contains($typeName, 'integer') || str_contains($typeName, 'bigint')) {
-            return 'integer';
-        }
-
-        if (str_contains($typeName, 'decimal') || str_contains($typeName, 'float')) {
-            return 'decimal';
-        }
-
-        if (str_contains($typeName, 'datetime') || str_contains($typeName, 'timestamp')) {
-            return 'datetime';
-        }
-
-        if (str_contains($typeName, 'date')) {
-            return 'date';
-        }
-
-        return 'string';
+        return $this->fieldTypeDetector->getFieldType($fieldName, $builder);
     }
 
     private function isDateColumn(string $column, $builder = null): bool
     {
-        if (in_array($column, ['created_at', 'updated_at', 'deleted_at', 'email_verified_at', 'last_used_at'])) {
-            return true;
-        }
-
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                $casts = $model->getCasts();
-                if (isset($casts[$column])) {
-                    $castType = strtolower($casts[$column]);
-
-                    $castType = explode(':', $castType)[0];
-
-                    if (in_array($castType, ['date', 'datetime', 'timestamp', 'time'])) {
-                        return true;
-                    }
-                }
-
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $column)->getType();
-
-                if ($columnType) {
-                    $typeName = $columnType->getName();
-                    if (in_array($typeName, ['date', 'datetime', 'datetimetz', 'time', 'timestamp'])) {
-                        return true;
-                    }
-                }
-            } catch (\Exception $e) {
-
-            }
-        }
-
-        return (bool) preg_match('/(date|time|at)$/i', $column);
+        return $this->fieldTypeDetector->isDateField($column, $builder);
     }
 }

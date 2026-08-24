@@ -19,8 +19,8 @@ class RealEstateSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find properties', $description);
-        $this->assertStringContainsString("with listing status is 'active'", $description);
-        $this->assertStringContainsString("with property type is 'sale'", $description);
+        $this->assertStringContainsString("whose listing status is 'active'", $description);
+        $this->assertStringContainsString("whose property type is 'sale'", $description);
     }
 
     public function test_properties_by_price_range_and_bedrooms()
@@ -81,8 +81,8 @@ class RealEstateSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find property viewings', $description);
-        $this->assertStringContainsString('with viewing within the last', $description);
-        $this->assertStringContainsString("with viewing status is 'completed'", $description);
+        $this->assertStringContainsString('with viewing date within the last', $description);
+        $this->assertStringContainsString("whose viewing status is 'completed'", $description);
         $this->assertStringContainsString('with a client feedback', $description);
     }
 
@@ -94,7 +94,7 @@ class RealEstateSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find property offers', $description);
-        $this->assertStringContainsString("with offer status is 'pending'", $description);
+        $this->assertStringContainsString("whose offer status is 'pending'", $description);
         $this->assertStringContainsString('with offer amount in USD greater than 450000', $description);
         $this->assertStringContainsString('including their property and buyer agent', $description);
     }
@@ -111,7 +111,7 @@ class RealEstateSystemTest extends TestCase
 
         $this->assertStringContainsString('Find properties', $description);
         $this->assertStringContainsString('who have property viewings', $description);
-        $this->assertStringContainsString("with listing status is 'active'", $description);
-        $this->assertStringContainsString('sorted by listed (newest to oldest)', $description);
+        $this->assertStringContainsString("whose listing status is 'active'", $description);
+        $this->assertStringContainsString('sorted by listed date (newest to oldest)', $description);
     }
 }

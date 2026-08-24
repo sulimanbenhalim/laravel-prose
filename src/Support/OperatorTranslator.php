@@ -6,11 +6,13 @@ namespace SulimanBenhalim\Prose\Support;
 
 class OperatorTranslator
 {
+    public function __construct(private ?Inflector $inflector = null) {}
+
     public function translateBasicOperator(string $operator): string
     {
         return match ($operator) {
             '=' => 'is',
-            '!=' => 'not equal to',
+            '!=', '<>' => 'is not',
             '>' => 'greater than',
             '>=' => 'greater than or equal to',
             '<' => 'less than',
@@ -25,7 +27,7 @@ class OperatorTranslator
     {
         return match ($operator) {
             '=' => 'on',
-            '!=' => 'not on',
+            '!=', '<>' => 'not on',
             '>' => 'after',
             '>=' => 'on or after',
             '<' => 'before',
@@ -38,7 +40,7 @@ class OperatorTranslator
     {
         return match ($operator) {
             '=' => 'at exactly',
-            '!=' => 'not at',
+            '!=', '<>' => 'not at',
             '>' => 'after',
             '>=' => 'at or after',
             '<' => 'before',
@@ -51,7 +53,7 @@ class OperatorTranslator
     {
         return match ($operator) {
             '=' => 'in',
-            '!=' => 'not in',
+            '!=', '<>' => 'not in',
             '>' => 'after',
             '>=' => 'in or after',
             '<' => 'before',
@@ -63,38 +65,49 @@ class OperatorTranslator
     public function translateDayOperator(string $operator): string
     {
         return match ($operator) {
-            '=' => 'on day',
-            '!=' => 'not on day',
-            '>' => 'after day',
-            '>=' => 'on or after day',
-            '<' => 'before day',
-            '<=' => 'on or before day',
+            '=' => 'on the',
+            '!=', '<>' => 'not on the',
+            '>' => 'after the',
+            '>=' => 'on or after the',
+            '<' => 'before the',
+            '<=' => 'on or before the',
             default => "day {$operator}",
         };
     }
 
-    public function translateComparisonPhrase(string $operator, mixed $value): string
+    /** Comparison between two columns: "equals", "is greater than", ... */
+    public function translateColumnOperator(string $operator, bool $datesInvolved = false): string
     {
-        $formattedValue = $this->formatValue($value);
+        if ($datesInvolved) {
+            return match ($operator) {
+                '=' => 'is the same as',
+                '!=', '<>' => 'differs from',
+                '>', '>=' => 'is after',
+                '<', '<=' => 'is before',
+                default => $operator,
+            };
+        }
 
         return match ($operator) {
-            '=' => "= {$formattedValue}",
-            '!=' => "!= {$formattedValue}",
-            '>' => "> {$formattedValue}",
-            '>=' => ">= {$formattedValue}",
-            '<' => "< {$formattedValue}",
-            '<=' => "<= {$formattedValue}",
-            'not like' => "not like {$formattedValue}",
-            default => "{$operator} {$formattedValue}",
+            '=' => 'equals',
+            '!=', '<>' => 'differs from',
+            '>' => 'is greater than',
+            '>=' => 'is greater than or equal to',
+            '<' => 'is less than',
+            '<=' => 'is less than or equal to',
+            default => $operator,
         };
     }
 
     public function buildConditionPhrase(string $column, string $operator, mixed $value): string
     {
-        $operatorText = $this->translateBasicOperator($operator);
         $formattedValue = $this->formatValue($value);
 
-        return "with {$column} {$operatorText} {$formattedValue}";
+        return match ($operator) {
+            '=' => "whose {$column} is {$formattedValue}",
+            '!=', '<>' => "whose {$column} is not {$formattedValue}",
+            default => "with {$column} {$this->translateBasicOperator($operator)} {$formattedValue}",
+        };
     }
 
     public function buildDateConditionPhrase(string $column, string $operator, mixed $value): string
@@ -107,6 +120,10 @@ class OperatorTranslator
 
     private function formatValue(mixed $value): string
     {
+        if ($this->inflector !== null) {
+            return $this->inflector->formatValue($value);
+        }
+
         if (is_string($value)) {
             return "'{$value}'";
         }

@@ -27,8 +27,8 @@ class UniversitySystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find students', $description);
-        $this->assertStringContainsString('with gpa score ranging from 3.5 to 4', $description);
-        $this->assertStringContainsString("with academic year is 'senior'", $description);
+        $this->assertStringContainsString('with GPA score ranging from 3.5 to 4', $description);
+        $this->assertStringContainsString("whose academic year is 'senior'", $description);
     }
 
     public function test_students_with_scholarship()
@@ -52,7 +52,7 @@ class UniversitySystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find courses', $description);
-        $this->assertStringContainsString("with semester is 'fall'", $description);
+        $this->assertStringContainsString("whose semester is 'fall'", $description);
         $this->assertStringContainsString('with current enrollment count less than 30', $description);
         $this->assertStringContainsString('sorted by credit hours (highest to lowest)', $description);
     }
@@ -65,7 +65,7 @@ class UniversitySystemTest extends TestCase
 
         $this->assertStringContainsString('Find faculties', $description);
         $this->assertStringContainsString('that are department head', $description);
-        $this->assertStringContainsString("with tenure status is 'tenured'", $description);
+        $this->assertStringContainsString("whose tenure status is 'tenured'", $description);
     }
 
     public function test_enrollments_with_high_attendance()
@@ -80,7 +80,7 @@ class UniversitySystemTest extends TestCase
         $this->assertStringContainsString('Find course enrollments', $description);
         $this->assertStringContainsString('with attendance percentage greater than or equal to 95', $description);
         $this->assertStringContainsString('with a final grade', $description);
-        $this->assertStringContainsString('who have students', $description);
+        $this->assertStringContainsString('who have a student with GPA score greater than 3.8', $description);
     }
 
     public function test_students_by_major_field()
@@ -104,7 +104,7 @@ class UniversitySystemTest extends TestCase
         $this->assertStringContainsString('Find faculties', $description);
         $this->assertStringContainsString('with research interests containing', $description);
         $this->assertStringContainsString('with salary in USD greater than 75000', $description);
-        $this->assertStringContainsString('sorted by hire (oldest to newest)', $description);
+        $this->assertStringContainsString('sorted by hire date (oldest to newest)', $description);
     }
 
     public function test_courses_by_time_schedule()
@@ -117,7 +117,7 @@ class UniversitySystemTest extends TestCase
         $this->assertStringContainsString('Find courses', $description);
         $this->assertStringContainsString('with start time greater than or equal to', $description);
         $this->assertStringContainsString('with end time less than or equal to', $description);
-        $this->assertStringContainsString('with credit hours is 3', $description);
+        $this->assertStringContainsString('whose credit hours is 3', $description);
     }
 
     public function test_complex_student_advisor_relationship()
@@ -136,7 +136,7 @@ class UniversitySystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find students', $description);
-        $this->assertStringContainsString('who have faculties', $description);
+        $this->assertStringContainsString("who have an advisor whose department is 'Computer Science' and that is not a department head", $description);
         $this->assertStringContainsString('who have course enrollments', $description);
         $this->assertStringContainsString('including their advisor and enrollments', $description);
     }

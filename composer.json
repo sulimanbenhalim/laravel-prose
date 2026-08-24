@@ -29,7 +29,6 @@
         "nesbot/carbon": "^2.0|^3.0"
     },
     "require-dev": {
-        "doctrine/dbal": "^4.3",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.13",
         "orchestra/testbench": "^10.0",

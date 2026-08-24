@@ -85,7 +85,7 @@ class UpdateFieldHandler
             'verified_at' => 'be unverified',
             'archived_at' => 'be unarchived',
             'banned_at' => 'be unbanned',
-            default => "not have {$humanizedField}",
+            default => "have no {$humanizedField}",
         };
     }
 
@@ -93,12 +93,22 @@ class UpdateFieldHandler
     {
         $humanizedField = $this->inflector->humanizeFieldName($field);
 
-        // Use existing boolean handler logic but adapt for update context
-        if ($this->isPositiveBooleanField($field)) {
-            // For positive boolean fields like 'is_active', remove the prefix for update context
-            $fieldWithoutPrefix = preg_replace('/^(is|has|can|should|will)\s+/', '', $humanizedField);
+        if (preg_match('/^(requires|needs|allows|accepts|supports)\s+(.+)/', $humanizedField, $matches)) {
+            $baseVerb = substr($matches[1], 0, -1);
 
-            return $value ? "be {$fieldWithoutPrefix}" : "not be {$fieldWithoutPrefix}";
+            return $value ? "{$baseVerb} {$matches[2]}" : "no longer {$baseVerb} {$matches[2]}";
+        }
+
+        if (preg_match('/^has\s+(.+)/', $humanizedField, $matches)) {
+            return $value ? "have {$matches[1]}" : "not have {$matches[1]}";
+        }
+
+        if (preg_match('/^(is|should|will)\s+(.+)/', $humanizedField, $matches)) {
+            return $value ? "be {$matches[2]}" : "not be {$matches[2]}";
+        }
+
+        if (preg_match('/^can\s+(.+)/', $humanizedField, $matches)) {
+            return $value ? "be able to {$matches[1]}" : "not be able to {$matches[1]}";
         }
 
         return $value ? "have {$humanizedField}" : "not have {$humanizedField}";
@@ -131,7 +141,7 @@ class UpdateFieldHandler
         $humanizedField = $this->inflector->humanizeFieldName($field);
         $formattedValue = $this->formatDateValue($value);
 
-        return "have {$humanizedField} {$formattedValue}";
+        return "have {$humanizedField} set to {$formattedValue}";
     }
 
     private function translateNumericField(string $field, mixed $value): string
@@ -175,11 +185,6 @@ class UpdateFieldHandler
     private function isStatusField(string $field): bool
     {
         return (bool) preg_match('/(status|state|type|category|level|grade|phase|stage)$/i', $field);
-    }
-
-    private function isPositiveBooleanField(string $field): bool
-    {
-        return (bool) preg_match('/^(is|has|can|should|will)_/', $field);
     }
 
     private function isIdentifierField(string $field): bool

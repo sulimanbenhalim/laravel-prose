@@ -39,7 +39,7 @@ class RefugeeAsylumSystemTest extends TestCase
         $this->assertStringContainsString('Find asylum seekers', $description);
         $this->assertStringContainsString('country of origin being one of', $description);
         $this->assertStringContainsString('Syria', $description);
-        $this->assertStringContainsString('arrival on or after', $description);
+        $this->assertStringContainsString('arrival date on or after', $description);
     }
 
     public function test_legal_appointments_needing_interpreters(): void
@@ -52,7 +52,7 @@ class RefugeeAsylumSystemTest extends TestCase
         $this->assertStringContainsString('Find legal appointments', $description);
         $this->assertStringContainsString('with interpreter requested', $description);
         $this->assertStringContainsString('appointment status is', $description);
-        $this->assertStringContainsString('scheduled datetime within', $description);
+        $this->assertStringContainsString('scheduled today or later', $description);
     }
 
     public function test_pro_bono_legal_advisors_with_language_skills(): void
@@ -78,7 +78,7 @@ class RefugeeAsylumSystemTest extends TestCase
 
         $this->assertStringContainsString('Find legal appointments', $description);
         $this->assertStringContainsString('consultation fee waived greater than 0', $description);
-        $this->assertStringContainsString('who have asylum seeker', $description);
+        $this->assertStringContainsString('who have an asylum seeker', $description);
     }
 
     public function test_urgent_hearing_preparation_appointments(): void
@@ -91,7 +91,7 @@ class RefugeeAsylumSystemTest extends TestCase
 
         $this->assertStringContainsString('Find legal appointments', $description);
         $this->assertStringContainsString('appointment type is', $description);
-        $this->assertStringContainsString('duration minutes greater than 90', $description);
+        $this->assertStringContainsString('duration in minutes greater than 90', $description);
         $this->assertStringContainsString('including their asylum seeker and legal advisor', $description);
     }
 
@@ -105,8 +105,8 @@ class RefugeeAsylumSystemTest extends TestCase
 
         $this->assertStringContainsString('Find first 20 asylum seekers', $description);
         $this->assertStringContainsString('with a special needs description', $description);
-        $this->assertStringContainsString('preferred language not equal to', $description);
-        $this->assertStringContainsString('sorted by arrival (newest to oldest)', $description);
+        $this->assertStringContainsString('preferred language is not', $description);
+        $this->assertStringContainsString('sorted by arrival date (newest to oldest)', $description);
     }
 
     public function test_overdue_appointment_follow_ups(): void
@@ -120,8 +120,8 @@ class RefugeeAsylumSystemTest extends TestCase
 
         $this->assertStringContainsString('Find legal appointments', $description);
         $this->assertStringContainsString('appointment status is', $description);
-        $this->assertStringContainsString('scheduled datetime more than', $description);
-        $this->assertStringContainsString('who have asylum seeker', $description);
+        $this->assertStringContainsString('scheduled before today', $description);
+        $this->assertStringContainsString('who have an asylum seeker', $description);
     }
 
     public function test_legal_advisors_by_specialization(): void
@@ -133,7 +133,7 @@ class RefugeeAsylumSystemTest extends TestCase
 
         $this->assertStringContainsString('Find legal advisors', $description);
         $this->assertStringContainsString('hourly rate in USD less than 200', $description);
-        $this->assertStringContainsString('sorted by years practicing immigration law (Z to A)', $description);
+        $this->assertStringContainsString('sorted by years practicing immigration law (highest to lowest)', $description);
     }
 
     public function test_completed_initial_consultations_this_month(): void

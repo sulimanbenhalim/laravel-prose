@@ -35,7 +35,7 @@ class GymManagementSystemTest extends TestCase
         $this->assertStringContainsString('Find gym subscriptions', $description);
         $this->assertStringContainsString('that are active subscription', $description);
         $this->assertStringContainsString('subscription type is', $description);
-        $this->assertStringContainsString('next billing in the next', $description);
+        $this->assertStringContainsString('with next billing on or before', $description);
         $this->assertStringContainsString('without auto renewal enabled', $description);
     }
 
@@ -51,7 +51,7 @@ class GymManagementSystemTest extends TestCase
         $this->assertStringContainsString('Find gym subscriptions', $description);
         $this->assertStringContainsString('monthly fee in USD greater than 100', $description);
         $this->assertStringContainsString('months remaining greater than 6', $description);
-        $this->assertStringContainsString('who have gym member', $description);
+        $this->assertStringContainsString('who have a gym member with membership start on or after January 1, 2023', $description);
     }
 
     public function test_intensive_workout_sessions_with_trainers(): void
@@ -63,7 +63,7 @@ class GymManagementSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find workout sessions', $description);
-        $this->assertStringContainsString('duration minutes greater than 90', $description);
+        $this->assertStringContainsString('duration in minutes greater than 90', $description);
         $this->assertStringContainsString('with a personal trainer', $description);
         $this->assertStringContainsString('calories burned estimate greater than 500', $description);
         $this->assertStringContainsString('check in time today', $description);
@@ -111,7 +111,7 @@ class GymManagementSystemTest extends TestCase
         $this->assertStringContainsString('Find gym subscriptions', $description);
         $this->assertStringContainsString('that are not active subscription', $description);
         $this->assertStringContainsString('without auto renewal enabled', $description);
-        $this->assertStringContainsString('who have gym member', $description);
+        $this->assertStringContainsString('who have a gym member that has medical clearance', $description);
         $this->assertStringContainsString('including their gym member', $description);
         $this->assertStringContainsString('sorted by next billing (newest to oldest)', $description);
     }
@@ -126,7 +126,7 @@ class GymManagementSystemTest extends TestCase
 
         $this->assertStringContainsString('Find workout sessions', $description);
         $this->assertStringContainsString('with a check out time', $description);
-        $this->assertStringContainsString('duration minutes', $description);
+        $this->assertStringContainsString('duration in minutes', $description);
     }
 
     public function test_trainers_with_high_client_capacity(): void
@@ -140,7 +140,7 @@ class GymManagementSystemTest extends TestCase
 
         $this->assertStringContainsString('Find first 5 personal trainers', $description);
         $this->assertStringContainsString('max clients per day greater than or equal to 10', $description);
-        $this->assertStringContainsString('certification type not equal to', $description);
+        $this->assertStringContainsString("whose certification type is not 'basic'", $description);
         $this->assertStringContainsString('sorted by hourly rate in USD (lowest to highest)', $description);
     }
 

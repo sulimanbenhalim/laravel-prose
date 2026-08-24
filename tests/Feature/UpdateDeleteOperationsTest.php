@@ -23,7 +23,7 @@ class UpdateDeleteOperationsTest extends TestCase
         $description = $deleteQuery->describe();
 
         $this->assertStringContainsString('Delete customers', $description);
-        $this->assertStringContainsString('with status is', $description);
+        $this->assertStringContainsString('whose status is', $description);
         $this->assertStringContainsString('banned', $description);
     }
 
@@ -40,7 +40,7 @@ class UpdateDeleteOperationsTest extends TestCase
         $description = $deleteQuery->describe();
 
         $this->assertStringContainsString('Delete customers', $description);
-        $this->assertStringContainsString('with status is', $description);
+        $this->assertStringContainsString('whose status is', $description);
         $this->assertStringContainsString('inactive', $description);
         $this->assertStringContainsString('with last login more than 2 years ago', $description);
     }
@@ -58,7 +58,7 @@ class UpdateDeleteOperationsTest extends TestCase
         $description = $deleteQuery->describe();
 
         $this->assertStringContainsString('Delete customers', $description);
-        $this->assertStringContainsString('created older than 6 months ago', $description);
+        $this->assertStringContainsString('created more than 6 months ago', $description);
         $this->assertStringContainsString('with unverified email', $description);
     }
 
@@ -76,7 +76,7 @@ class UpdateDeleteOperationsTest extends TestCase
         $description = $updateQuery->describe();
 
         $this->assertStringContainsString('Update customers', $description);
-        $this->assertStringContainsString('with status is', $description);
+        $this->assertStringContainsString('whose status is', $description);
         $this->assertStringContainsString('pending', $description);
     }
 
@@ -120,7 +120,7 @@ class UpdateDeleteOperationsTest extends TestCase
         $description = $countQuery->describe();
 
         $this->assertStringContainsString('Count customers', $description);
-        $this->assertStringContainsString('with status is', $description);
+        $this->assertStringContainsString('whose status is', $description);
         $this->assertStringContainsString('active', $description);
     }
 }

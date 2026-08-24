@@ -38,7 +38,7 @@ class RealWorldEdgeCasesTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('that are not currently available', $description3);
-        $this->assertStringContainsString('with requires shipping', $description3);
+        $this->assertStringContainsString('that require shipping', $description3);
     }
 
     public function test_complex_date_time_scenarios(): void
@@ -51,7 +51,7 @@ class RealWorldEdgeCasesTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find legal appointments', $description);
-        $this->assertStringContainsString('scheduled datetime today', $description);
+        $this->assertStringContainsString('scheduled today', $description);
         $this->assertStringContainsString('scheduled datetime in', $description);
     }
 
@@ -97,7 +97,7 @@ class RealWorldEdgeCasesTest extends TestCase
 
         $this->assertStringContainsString('Find orders', $description);
         $this->assertStringContainsString('who have order items', $description);
-        $this->assertStringContainsString('including their customer and order items product category', $description);
+        $this->assertStringContainsString('including their customer and order items and their product and their category', $description);
     }
 
     public function test_multiple_in_clauses_different_types(): void
@@ -112,7 +112,7 @@ class RealWorldEdgeCasesTest extends TestCase
         $this->assertStringContainsString('follow_up', $description);
         $this->assertStringContainsString('emergency', $description);
         $this->assertStringContainsString('appointment status being one of', $description);
-        $this->assertStringContainsString('estimated duration minutes being one of', $description);
+        $this->assertStringContainsString('estimated duration in minutes being one of', $description);
     }
 
     public function test_json_field_queries(): void
@@ -136,7 +136,7 @@ class RealWorldEdgeCasesTest extends TestCase
         $this->assertStringContainsString('Find first 500 products', $description);
         $this->assertStringContainsString('stock quantity available greater than 0', $description);
         $this->assertStringContainsString('sorted by price in USD (highest to lowest) then product name (A to Z)', $description);
-        $this->assertStringContainsString('starting from position 2500', $description);
+        $this->assertStringContainsString('skipping the first 2500', $description);
     }
 
     public function test_mixed_null_conditions(): void
@@ -188,11 +188,11 @@ class RealWorldEdgeCasesTest extends TestCase
         $this->assertStringContainsString('Find first 50 legal appointments', $description);
         $this->assertStringContainsString('appointment status is', $description);
         $this->assertStringContainsString('with interpreter requested', $description);
-        $this->assertStringContainsString('duration minutes greater than 60', $description);
-        $this->assertStringContainsString('who have asylum seeker', $description);
-        $this->assertStringContainsString('who have legal advisor', $description);
+        $this->assertStringContainsString('duration in minutes greater than 60', $description);
+        $this->assertStringContainsString('who have an asylum seeker', $description);
+        $this->assertStringContainsString('who have a legal advisor', $description);
         $this->assertStringContainsString('including their asylum seeker and legal advisor', $description);
-        $this->assertStringContainsString('sorted by scheduled datetime (oldest to newest) then duration minutes (Z to A)', $description);
+        $this->assertStringContainsString('sorted by scheduled datetime (oldest to newest) then duration in minutes (highest to lowest)', $description);
 
         $conditionCount = substr_count($description, ' and ');
         $this->assertLessThan(20, $conditionCount, 'Should truncate excessive conditions for readability');
@@ -224,6 +224,6 @@ class RealWorldEdgeCasesTest extends TestCase
         $this->assertStringContainsString('date of birth after', $description2);
 
         $description3 = Product::where('sku_code', 'like', 'ELC%')->describe();
-        $this->assertStringContainsString('sku code starting with', $description3);
+        $this->assertStringContainsString('SKU code starting with', $description3);
     }
 }

@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace SulimanBenhalim\Prose\Translators;
 
-use SulimanBenhalim\Prose\Support\Inflector;
-
 class LimitTranslator
 {
     public function __construct(
-        private Inflector $inflector,
         private array $config
     ) {}
 
@@ -23,10 +20,9 @@ class LimitTranslator
         }
 
         if ($offset !== null && $offset > 0) {
-            $offsetConnector = $this->config['connectors']['offset'] ?? 'starting from position';
-            $parts[] = "{$offsetConnector} {$offset}";
+            $parts[] = "skipping the first {$offset}";
         }
 
-        return $this->inflector->joinWithConnector($parts, 'and');
+        return implode(', ', $parts);
     }
 }

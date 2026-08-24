@@ -35,7 +35,7 @@ class ClinicManagementSystemTest extends TestCase
         $this->assertStringContainsString('Find medical appointments', $description);
         $this->assertStringContainsString('with insurance covers visit', $description);
         $this->assertStringContainsString('appointment status is', $description);
-        $this->assertStringContainsString('scheduled datetime within', $description);
+        $this->assertStringContainsString('scheduled today or later', $description);
         $this->assertStringContainsString('consultation fee in USD greater than 150', $description);
     }
 
@@ -67,7 +67,7 @@ class ClinicManagementSystemTest extends TestCase
         $this->assertStringContainsString('appointment type is', $description);
         $this->assertStringContainsString('without insurance covers visit', $description);
         $this->assertStringContainsString('without diagnosis notes', $description);
-        $this->assertStringContainsString('who have patient', $description);
+        $this->assertStringContainsString('who have a patient without an insurance provider', $description);
     }
 
     public function test_pediatric_patients_under_specific_age(): void
@@ -84,7 +84,7 @@ class ClinicManagementSystemTest extends TestCase
         $this->assertStringContainsString('Find patients', $description);
         $this->assertStringContainsString('date of birth within the last 16 years', $description);
         $this->assertStringContainsString('who have medical appointments', $description);
-        $this->assertStringContainsString('including their medical appointments doctor', $description);
+        $this->assertStringContainsString('including their medical appointments and their doctor', $description);
     }
 
     public function test_high_cost_procedures_requiring_follow_up(): void
@@ -99,7 +99,7 @@ class ClinicManagementSystemTest extends TestCase
         $this->assertStringContainsString('Find medical appointments', $description);
         $this->assertStringContainsString('appointment type is', $description);
         $this->assertStringContainsString('consultation fee in USD greater than 500', $description);
-        $this->assertStringContainsString('estimated duration minutes greater than 120', $description);
+        $this->assertStringContainsString('estimated duration in minutes greater than 120', $description);
         $this->assertStringContainsString('sorted by consultation fee in USD (highest to lowest)', $description);
     }
 
@@ -129,7 +129,7 @@ class ClinicManagementSystemTest extends TestCase
 
         $this->assertStringContainsString('Find medical appointments', $description);
         $this->assertStringContainsString('appointment status is', $description);
-        $this->assertStringContainsString('who have patient', $description);
+        $this->assertStringContainsString('who have a patient that has chronic conditions', $description);
         $this->assertStringContainsString('scheduled datetime in August', $description);
     }
 
@@ -160,7 +160,7 @@ class ClinicManagementSystemTest extends TestCase
             ->describe();
 
         $this->assertStringContainsString('Find doctors', $description);
-        $this->assertStringContainsString('who have medical appointments', $description);
+        $this->assertStringContainsString('who have more than 40 medical appointments', $description);
         $this->assertStringContainsString('that are not accepting new patients', $description);
     }
 }

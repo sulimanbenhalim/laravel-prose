@@ -17,68 +17,116 @@ class ExistsTranslator
 
     public function translateExists(array $where): string
     {
-        if (! isset($where['query'])) {
-            return $this->config['raw_fallback_text'];
-        }
-
-        $query = $where['query'];
-        $relation = $this->extractRelationName($query);
-
-        if (! $relation) {
-            if ($this->isNormalEloquentQuery($query)) {
-                $inferredRelation = $this->inferRelationFromContext($query);
-                if ($inferredRelation) {
-                    $relation = $inferredRelation;
-                } else {
-                    return 'with related records';
-                }
-            } else {
-                return $this->config['raw_fallback_text'];
-            }
-        }
-
-        $conditions = $this->extractConditions($query);
-
-        if (empty($conditions)) {
-            return "who have {$relation}";
-        }
-
-        $conditionsText = $this->inflector->joinWithConnector($conditions, 'and');
-
-        return "who have {$relation} {$conditionsText}";
+        return $this->translateExistsWhere($where, positive: true);
     }
 
     public function translateNotExists(array $where): string
+    {
+        return $this->translateExistsWhere($where, positive: false);
+    }
+
+    private function translateExistsWhere(array $where, bool $positive): string
     {
         if (! isset($where['query'])) {
             return $this->config['raw_fallback_text'];
         }
 
         $query = $where['query'];
+
+        $belongsTo = $this->detectBelongsTo($query);
+
+        if ($belongsTo !== null) {
+            return $this->buildBelongsToPhrase($query, $belongsTo, $positive);
+        }
+
         $relation = $this->extractRelationName($query);
 
         if (! $relation) {
-            if ($this->isNormalEloquentQuery($query)) {
-                $inferredRelation = $this->inferRelationFromContext($query);
-                if ($inferredRelation) {
-                    $relation = $inferredRelation;
-                } else {
-                    return "who don't have related records";
-                }
-            } else {
+            if (! $this->isNormalEloquentQuery($query)) {
                 return $this->config['raw_fallback_text'];
+            }
+
+            $relation = $this->inferRelationFromContext($query);
+            if (! $relation) {
+                return $positive ? 'with related records' : "who don't have related records";
             }
         }
 
-        $conditions = $this->extractConditions($query);
+        $conditionsText = $this->extractConditions($query);
+        $prefix = $positive ? 'who have' : "who don't have";
 
-        if (empty($conditions)) {
-            return "who don't have {$relation}";
+        return trim("{$prefix} {$relation} {$conditionsText}");
+    }
+
+    /**
+     * "who have a manager whose department is 'Engineering'" for
+     * belongsTo-style whereHas, detected from the correlation join
+     * parent.{name}_id = sub.id.
+     */
+    private function buildBelongsToPhrase(QueryBuilder $query, string $relationName, bool $positive): string
+    {
+        $humanized = str_replace(['_', '-'], ' ', $relationName);
+        $article = $this->inflector->getProperArticle($humanized);
+        $label = ($article ? "{$article} " : '').$humanized;
+
+        $conditionsText = $this->extractConditions($query, singular: true);
+        $prefix = $positive ? 'who have' : "who don't have";
+
+        return trim("{$prefix} {$label} {$conditionsText}");
+    }
+
+    /**
+     * Returns the foreign-key base name when the exists subquery correlates
+     * through a foreign key on the parent table (belongsTo), null otherwise.
+     */
+    private function detectBelongsTo(QueryBuilder $query): ?string
+    {
+        $subTables = $this->subQueryTables($query);
+
+        foreach ($query->wheres ?? [] as $where) {
+            if (($where['type'] ?? '') !== 'Column' || ($where['operator'] ?? '') !== '=') {
+                continue;
+            }
+
+            foreach ([$where['first'] ?? null, $where['second'] ?? null] as $side) {
+                if (! is_string($side) || ! str_contains($side, '.') || ! str_ends_with($side, '_id')) {
+                    continue;
+                }
+
+                [$table, $column] = explode('.', $side, 2);
+
+                // Foreign key on the parent side of the correlation
+                if (! in_array($table, $subTables, true)) {
+                    return substr($column, 0, -3);
+                }
+            }
         }
 
-        $conditionsText = $this->inflector->joinWithConnector($conditions, 'and');
+        return null;
+    }
 
-        return "who don't have {$relation} {$conditionsText}";
+    /** @return string[] table names that refer to the subquery side of the correlation */
+    private function subQueryTables(QueryBuilder $query): array
+    {
+        $from = (string) ($query->from ?? '');
+        $tables = [];
+
+        if (preg_match('/^["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?(?:\s+as\s+["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?)?$/i', trim($from), $matches)) {
+            // With an alias (self-referential relations), subquery columns use
+            // the alias, so the bare table name refers to the parent.
+            $tables[] = $matches[2] ?? $matches[1];
+        }
+
+        // Pivot tables joined inside the subquery (belongsToMany) are part of
+        // the subquery side too.
+        foreach ($query->joins ?? [] as $join) {
+            $joinTable = (string) ($join->table ?? '');
+            if ($joinTable !== '') {
+                $tables[] = preg_split('/\s+as\s+/i', trim(str_replace(['"', '`'], '', $joinTable)))[0];
+            }
+        }
+
+        return $tables;
     }
 
     private function extractRelationName(QueryBuilder $query): ?string
@@ -94,7 +142,7 @@ class ExistsTranslator
     {
         $from = $query->from ?? '';
         if (! empty($from)) {
-            return $this->humanizeTableName($from);
+            return $this->humanizeTableName((string) $from);
         }
 
         return null;
@@ -106,7 +154,7 @@ class ExistsTranslator
         foreach ($joins as $join) {
             $table = $join->table ?? '';
             if (! empty($table)) {
-                return $this->humanizeTableName($table);
+                return $this->humanizeTableName((string) $table);
             }
         }
 
@@ -122,13 +170,11 @@ class ExistsTranslator
             $column = $where['column'] ?? '';
 
             if (is_string($column) && str_contains($column, '.')) {
-
                 $parts = explode('.', $column);
-                if (count($parts) >= 2) {
+                if (count($parts) >= 2 && ! str_starts_with($parts[0], 'laravel_reserved')) {
                     $tableCandidates[] = $parts[0];
                 }
             } elseif (is_string($column)) {
-
                 $inferredTable = $this->inferTableFromColumn($column);
                 if ($inferredTable) {
                     $tableCandidates[] = $inferredTable;
@@ -168,8 +214,7 @@ class ExistsTranslator
         foreach ($wheres as $where) {
             $column = $where['column'] ?? '';
             if (is_string($column) && ! empty($column)) {
-
-                $potentialTable = $this->extractTableFromColumnDynamically($column);
+                $potentialTable = $this->extractEntityFromColumnName($column);
                 if ($potentialTable) {
                     return $potentialTable;
                 }
@@ -179,21 +224,18 @@ class ExistsTranslator
         return null;
     }
 
-    private function extractTableFromColumnDynamically(string $column): ?string
-    {
-        return $this->extractEntityFromColumnName($column);
-    }
-
     private function humanizeTableName(string $tableName): string
     {
         $cleaned = trim(str_replace(['"', "'", '`'], '', $tableName));
 
-        return str_replace(['_', '-'], ' ', $cleaned);
+        // "employees as laravel_reserved_0" → "employees"
+        $cleaned = preg_split('/\s+as\s+/i', $cleaned)[0];
+
+        return str_replace(['_', '-'], ' ', trim($cleaned));
     }
 
     private function inferTableFromColumn(string $column): ?string
     {
-
         if (str_ends_with($column, '_id')) {
             $relationName = str_replace('_id', '', $column);
 
@@ -240,27 +282,34 @@ class ExistsTranslator
         return null;
     }
 
-    private function extractConditions(QueryBuilder $query): array
+    private function extractConditions(QueryBuilder $query, bool $singular = false): string
     {
         $wheres = $query->wheres ?? [];
 
         if (empty($wheres)) {
-            return [];
+            return '';
         }
 
-        $filteredWheres = array_filter($wheres, function ($where) {
+        $filteredWheres = array_values(array_filter($wheres, function ($where) {
             return ! $this->isJoinCondition($where);
-        });
+        }));
 
-        return $this->whereTranslator->translate(array_values($filteredWheres));
+        $pairs = $this->whereTranslator->translateWithBooleans($filteredWheres);
+
+        if ($singular) {
+            foreach ($pairs as $i => $pair) {
+                $pairs[$i]['text'] = $this->inflector->singularizeConditionPhrase($pair['text']);
+            }
+        }
+
+        return $this->whereTranslator->joinConditionPairs($pairs);
     }
 
     private function isJoinCondition(array $where): bool
     {
-
         if ($where['type'] === 'Column') {
-            $first = $where['first'] ?? '';
-            $second = $where['second'] ?? '';
+            $first = is_string($where['first'] ?? null) ? $where['first'] : '';
+            $second = is_string($where['second'] ?? null) ? $where['second'] : '';
             $operator = $where['operator'] ?? '';
 
             return $operator === '=' &&
@@ -271,7 +320,7 @@ class ExistsTranslator
         }
 
         if ($where['type'] === 'Basic') {
-            $column = $where['column'] ?? '';
+            $column = is_string($where['column'] ?? null) ? $where['column'] : '';
             $value = $where['value'] ?? '';
 
             return str_contains($column, '.') &&
@@ -304,7 +353,9 @@ class ExistsTranslator
             if (isset($where['column']) && is_string($where['column'])) {
                 if (str_contains($where['column'], '.')) {
                     $parts = explode('.', $where['column']);
-                    $tableNames[] = $parts[0];
+                    if (! str_starts_with($parts[0], 'laravel_reserved')) {
+                        $tableNames[] = $parts[0];
+                    }
                 } elseif (str_ends_with($where['column'], '_id')) {
                     $relationName = str_replace('_id', '', $where['column']);
                     $tableNames[] = $this->inflector->pluralize($relationName);

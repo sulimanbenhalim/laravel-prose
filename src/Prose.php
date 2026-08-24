@@ -37,7 +37,7 @@ class Prose
         $this->existsTranslator = new ExistsTranslator($this->inflector, $this->whereTranslator, $config);
         $this->whereTranslator->setExistsTranslator($this->existsTranslator);
         $this->orderTranslator = new OrderTranslator($this->inflector, $config);
-        $this->limitTranslator = new LimitTranslator($this->inflector, $config);
+        $this->limitTranslator = new LimitTranslator($config);
         $this->updateTranslator = new UpdateTranslator($this->inflector, $config);
         $this->deleteTranslator = new DeleteTranslator;
     }
@@ -54,6 +54,7 @@ class Prose
             'action' => $this->getAction($query, $builder),
             'model' => $this->getModelName($builder),
             'conditions' => $this->getConditions($query, $builder),
+            'grouping' => $this->getGrouping($query, $builder),
             'updateFields' => $this->getUpdateFields($query, $builder),
             'relationships' => $this->getRelationships($builder),
             'ordering' => $this->getOrdering($query, $builder),
@@ -71,19 +72,17 @@ class Prose
             $function = $aggregate['function'] ?? 'count';
 
             if ($function === 'update') {
-                // Use sophisticated UpdateTranslator for professional natural language
                 return $this->updateTranslator->translateUpdateAction($query, $builder);
             }
 
             if ($function === 'delete') {
-                // Use sophisticated DeleteTranslator for professional natural language
                 return $this->deleteTranslator->translateDeleteAction($query, $builder);
             }
 
             $columns = $aggregate['columns'] ?? [];
 
             if ($function !== 'count' && ! empty($columns) && $columns[0] !== '*') {
-                $column = $this->inflector->humanizeFieldName($columns[0]);
+                $column = $this->inflector->humanizeFieldName($columns[0], $builder);
                 $action = $this->config['actions'][$function] ?? ucfirst($function);
 
                 return $action.' '.$column.' for';
@@ -131,39 +130,53 @@ class Prose
             return '';
         }
 
-        $regularWheres = [];
-        $existsWheres = [];
+        return $this->whereTranslator->translateToSentence($wheres, $builder);
+    }
 
-        foreach ($wheres as $where) {
-            if (in_array(strtolower($where['type']), ['exists', 'notexists'])) {
-                $existsWheres[] = $where;
-            } else {
-                $regularWheres[] = $where;
+    private function getGrouping(QueryBuilder $query, EloquentBuilder $builder): string
+    {
+        $groups = $query->groups ?? [];
+
+        if (empty($groups)) {
+            return '';
+        }
+
+        $names = [];
+        foreach ($groups as $group) {
+            if (is_string($group)) {
+                $names[] = $this->inflector->humanizeFieldName($group, $builder);
             }
         }
 
-        $conditions = [];
-
-        if (! empty($regularWheres)) {
-            $regularConditions = $this->whereTranslator->translate($regularWheres, $builder);
-            $conditions = array_merge($conditions, $regularConditions);
+        if (empty($names)) {
+            return '';
         }
 
-        if (! empty($existsWheres)) {
-            foreach ($existsWheres as $existsWhere) {
-                if (strtolower($existsWhere['type']) === 'exists') {
-                    $condition = $this->existsTranslator->translateExists($existsWhere);
-                } else {
-                    $condition = $this->existsTranslator->translateNotExists($existsWhere);
-                }
+        $phrase = 'grouped by '.$this->inflector->joinWithConnector($names, 'and');
 
-                if ($condition) {
-                    $conditions[] = $condition;
-                }
+        $havings = $this->translateHavings($query->havings ?? [], $builder);
+        if ($havings !== '') {
+            $phrase .= ' '.$havings;
+        }
+
+        return $phrase;
+    }
+
+    private function translateHavings(array $havings, EloquentBuilder $builder): string
+    {
+        $translatable = [];
+
+        foreach ($havings as $having) {
+            if (($having['type'] ?? '') === 'Basic' && is_string($having['column'] ?? null)) {
+                $translatable[] = $having;
             }
         }
 
-        return $this->inflector->joinWithConnector($conditions, 'and');
+        if (empty($translatable)) {
+            return '';
+        }
+
+        return $this->whereTranslator->translateToSentence($translatable, $builder);
     }
 
     private function getRelationships(EloquentBuilder $builder): string
@@ -179,10 +192,12 @@ class Prose
         $filteredRelationships = $this->filterRedundantRelationships($relationships);
 
         $relationshipNames = array_map(function ($relation) {
-            $relation = str_replace('.', ' ', $relation);
-            $relation = $this->inflector->humanizeFieldName($relation);
+            $segments = array_map(
+                fn ($segment) => $this->inflector->humanizeFieldName($segment),
+                explode('.', $relation)
+            );
 
-            return $relation;
+            return implode(' and their ', $segments);
         }, $filteredRelationships);
 
         $connector = $this->config['connectors']['relationships'] ?? 'including their';
@@ -206,7 +221,11 @@ class Prose
     {
         $template = $this->config['sentence_template'];
 
-        // Handle UPDATE operations specially to insert field updates after conditions
+        if (! str_contains($template, '{grouping}') && ! empty($parts['grouping'])) {
+            $template = str_replace('{conditions}', '{conditions} {grouping}', $template);
+        }
+
+        // Insert field updates after conditions for UPDATE operations
         if (! empty($parts['updateFields'])) {
             $template = str_replace('{conditions}', '{conditions} to {updateFields}', $template);
         }
@@ -234,27 +253,34 @@ class Prose
 
     private function repositionLimitToBeginning(string $template, array $parts): array
     {
-
         $limitText = $parts['limit'];
 
-        if (preg_match('/first (\d+) results?/', $limitText, $matches)) {
-            $number = $matches[1];
-
-            $offsetPart = '';
-            if (preg_match('/(and starting from position \d+)/', $limitText, $offsetMatches)) {
-                $offsetPart = ' '.$offsetMatches[1];
-            }
-
-            $template = str_replace(' {limit}', '', $template);
-            $template = str_replace('{action}', "{action} first {$number}", $template);
-
-            if ($offsetPart) {
-                $template .= ' {offset_part}';
-                $parts['offset_part'] = $offsetPart;
-            }
-
-            $parts['limit'] = '';
+        if (! preg_match('/first (\d+) results?/', $limitText, $matches)) {
+            return [$template, $parts];
         }
+
+        $number = (int) $matches[1];
+
+        $offsetPart = '';
+        if (preg_match('/(skipping the first \d+)/', $limitText, $offsetMatches)) {
+            $offsetPart = ', '.$offsetMatches[1];
+        }
+
+        $template = str_replace(' {limit}', '', $template);
+
+        if ($number === 1) {
+            $template = str_replace('{action}', '{action} the first', $template);
+            $parts['model'] = $this->inflector->singularize($parts['model']);
+        } else {
+            $template = str_replace('{action}', "{action} first {$number}", $template);
+        }
+
+        if ($offsetPart) {
+            $template .= '{offset_part}';
+            $parts['offset_part'] = $offsetPart;
+        }
+
+        $parts['limit'] = '';
 
         return [$template, $parts];
     }

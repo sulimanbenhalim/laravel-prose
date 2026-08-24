@@ -6,7 +6,10 @@ namespace SulimanBenhalim\Prose\Support;
 
 class BooleanFieldHandler
 {
-    public function __construct(private FieldTypeDetector $fieldTypeDetector) {}
+    public function __construct(
+        private FieldTypeDetector $fieldTypeDetector,
+        private ?Inflector $inflector = null
+    ) {}
 
     public function isBooleanValue(mixed $value): bool
     {
@@ -26,7 +29,7 @@ class BooleanFieldHandler
     public function translateBooleanCondition(string $column, string $operator, mixed $value): string
     {
         $isTrue = ($value === true || $value === 1 || $value === '1' || $value === 'true');
-        $isPositiveCondition = ($operator === '=' && $isTrue) || ($operator === '!=' && ! $isTrue);
+        $isPositiveCondition = (in_array($operator, ['=']) && $isTrue) || (in_array($operator, ['!=', '<>']) && ! $isTrue);
 
         return $this->buildNaturalBooleanPhrase($column, $isPositiveCondition);
     }
@@ -40,15 +43,32 @@ class BooleanFieldHandler
         }
 
         if (preg_match('/^is\s+(.+)/', $column, $matches)) {
+            $complement = $this->inflector?->pluralizeNounPhrase($matches[1]) ?? $matches[1];
+
             return $isPositive
-                ? "that are {$matches[1]}"
-                : "that are not {$matches[1]}";
+                ? "that are {$complement}"
+                : "that are not {$complement}";
         }
 
         if (preg_match('/^can\s+(.+)/', $column, $matches)) {
             return $isPositive
                 ? "that can {$matches[1]}"
                 : "that can't {$matches[1]}";
+        }
+
+        // "requires shipping" → "that require shipping" (plural subject)
+        if (preg_match('/^(requires|needs|allows|accepts|supports)\s+(.+)/', $column, $matches)) {
+            $baseVerb = substr($matches[1], 0, -1);
+
+            return $isPositive
+                ? "that {$baseVerb} {$matches[2]}"
+                : "that don't {$baseVerb} {$matches[2]}";
+        }
+
+        if (str_ends_with($column, ' eligible')) {
+            return $isPositive
+                ? "that are {$column}"
+                : "that are not {$column}";
         }
 
         return $isPositive
@@ -58,13 +78,11 @@ class BooleanFieldHandler
 
     public function shouldUseBooleanTranslation(string $fieldName, mixed $value, string $operator, $builder = null): bool
     {
-        // Check if field is detected as boolean field
-        if ($this->fieldTypeDetector->isBooleanField($fieldName, $builder) && in_array($operator, ['=', '!='])) {
+        if ($this->fieldTypeDetector->isBooleanField($fieldName, $builder) && in_array($operator, ['=', '!=', '<>'])) {
             return true;
         }
 
-        // Check if value is boolean-like and operator is equality
-        if ($this->isBooleanValue($value) && in_array($operator, ['=', '!='])) {
+        if ($this->isBooleanValue($value) && in_array($operator, ['=', '!=', '<>'])) {
             return true;
         }
 

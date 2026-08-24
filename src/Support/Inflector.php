@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SulimanBenhalim\Prose\Support;
 
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Doctrine\Inflector\InflectorFactory;
 
 class Inflector
@@ -13,10 +14,49 @@ class Inflector
 
     private VerbInflector $verbInflector;
 
+    private FieldTypeDetector $fieldTypeDetector;
+
+    private RelativeTimeFormatter $timeFormatter;
+
+    /** @var array<string, string> humanizeFieldName memoization */
+    private array $fieldNameCache = [];
+
+    private const ACRONYMS = [
+        'id', 'gpa', 'sku', 'url', 'uri', 'vin', 'hoa', 'api', 'ssn', 'iban',
+        'sms', 'cvv', 'vat', 'seo', 'ip', 'pdf', 'qr', 'faq',
+    ];
+
+    /** Unambiguous measurement units: always expanded to "in {unit}". */
+    private const UNIT_SUFFIXES = [
+        'km' => 'in km',
+        'kg' => 'in kg',
+        'cm' => 'in cm',
+        'mm' => 'in mm',
+        'sqft' => 'in sqft',
+        'bytes' => 'in bytes',
+        'kilobytes' => 'in KB',
+        'megabytes' => 'in MB',
+        'gigabytes' => 'in GB',
+        'terabytes' => 'in TB',
+    ];
+
+    /**
+     * Time units are only expanded after a measurement noun, so
+     * "duration minutes" → "duration in minutes" but "credit hours" stays.
+     */
+    private const TIME_UNIT_SUFFIXES = ['minutes', 'hours', 'seconds', 'days'];
+
+    private const MEASUREMENT_NOUNS = ['duration', 'delay', 'timeout', 'interval', 'wait', 'runtime', 'uptime', 'downtime', 'latency'];
+
+    /** Word endings that signal an adjective, which must not be pluralized. */
+    private const ADJECTIVE_SUFFIXES = ['able', 'ible', 'ed', 'ing', 'al', 'ous', 'ive', 'ic', 'ary', 'ful', 'less', 'ly'];
+
     public function __construct(private array $config)
     {
         $this->doctrineInflector = InflectorFactory::createForLanguage('english')->build();
         $this->verbInflector = new VerbInflector;
+        $this->fieldTypeDetector = new FieldTypeDetector;
+        $this->timeFormatter = new RelativeTimeFormatter;
     }
 
     public function pluralize(string $word): string
@@ -37,50 +77,33 @@ class Inflector
 
     public function humanizeFieldName(string $field, $builder = null): string
     {
-        $field = preg_replace_callback('/([a-z])([A-Z])/', function ($matches) {
+        $cacheKey = $field.'|'.($builder && method_exists($builder, 'getModel') ? get_class($builder->getModel()) : '');
+
+        if (isset($this->fieldNameCache[$cacheKey])) {
+            return $this->fieldNameCache[$cacheKey];
+        }
+
+        $humanized = preg_replace_callback('/([a-z])([A-Z])/', function ($matches) {
             return $matches[1].'_'.strtolower($matches[2]);
         }, $field);
 
-        $humanized = preg_replace_callback('/_+/', function ($matches) {
-            return str_repeat(' ', strlen($matches[0]));
-        }, $field);
+        $humanized = trim(preg_replace('/_+/', ' ', $humanized));
 
-        return $this->enhanceFieldNameWithContext($humanized, $field, $builder);
+        $humanized = $this->enhanceFieldNameWithContext($humanized, $field, $builder);
+
+        return $this->fieldNameCache[$cacheKey] = $humanized;
     }
 
     public function humanizeDate(mixed $value): string
     {
-        if (! $this->config['humanize_dates']) {
+        if (! ($this->config['humanize_dates'] ?? true)) {
             return (string) $value;
         }
 
         try {
-            $carbon = Carbon::parse($value);
-            $formats = $this->config['date_formats'] ?? [];
+            $carbon = $value instanceof CarbonInterface ? $value : Carbon::parse((string) $value);
 
-            $relativeTime = $this->detectRelativeTime($carbon);
-            if ($relativeTime) {
-                return $relativeTime;
-            }
-
-            if ($carbon->isToday()) {
-                return $formats['today'] ?? 'today';
-            }
-
-            if ($carbon->isYesterday()) {
-                return $formats['yesterday'] ?? 'yesterday';
-            }
-
-            $daysAgo = (int) $carbon->diffInDays();
-            if ($daysAgo <= 7) {
-                return str_replace(':count', (string) $daysAgo, $formats['days_ago'] ?? ':count days ago');
-            }
-
-            if ($carbon->isCurrentYear()) {
-                return $carbon->format($formats['this_year'] ?? 'M j');
-            }
-
-            return $carbon->format($formats['fallback'] ?? 'M j, Y');
+            return $this->timeFormatter->describePoint($carbon);
         } catch (\Exception) {
             return (string) $value;
         }
@@ -108,7 +131,11 @@ class Inflector
     public function formatValue(mixed $value): string
     {
         if (is_string($value)) {
-            return "'{$value}'";
+            if ($value === '') {
+                return 'empty';
+            }
+
+            return str_contains($value, "'") ? "\"{$value}\"" : "'{$value}'";
         }
 
         if (is_bool($value)) {
@@ -130,29 +157,7 @@ class Inflector
 
     public function detectBooleanField(string $fieldName, $builder = null): bool
     {
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                $casts = $model->getCasts();
-                if (isset($casts[$fieldName]) && $casts[$fieldName] === 'boolean') {
-                    return true;
-                }
-
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $fieldName)->getType();
-
-                if ($columnType && class_exists('\Doctrine\DBAL\Types\BooleanType') && $columnType instanceof \Doctrine\DBAL\Types\BooleanType) {
-                    return true;
-                }
-
-            } catch (\Exception $e) {
-
-            }
-        }
-
-        return (bool) preg_match('/^(is|has|can|should|will|was|were)_/', $fieldName);
+        return $this->fieldTypeDetector->isBooleanField($fieldName, $builder);
     }
 
     public function getProperArticle(string $fieldName): string
@@ -172,7 +177,7 @@ class Inflector
         $words = explode(' ', trim($fieldName));
         $lastWord = end($words);
 
-        $units = ['seconds', 'minutes', 'hours', 'days', 'months', 'years', 'usd', 'eur', 'gbp'];
+        $units = ['seconds', 'minutes', 'hours', 'days', 'months', 'years', 'usd', 'eur', 'gbp', 'km', 'kg'];
         if (in_array(strtolower($lastWord), $units)) {
             if (count($words) > 1) {
                 $lastWord = $words[count($words) - 2];
@@ -184,32 +189,145 @@ class Inflector
         return $singular !== $lastWord;
     }
 
+    /**
+     * Pluralize the trailing noun of a "that are X" complement so that
+     * "customers that are premium member" becomes "premium members".
+     * Leaves adjectives and prepositional phrases alone.
+     */
+    public function pluralizeNounPhrase(string $phrase): string
+    {
+        if (trim($phrase) === '') {
+            return $phrase;
+        }
+
+        $words = explode(' ', trim($phrase));
+
+        $prepositions = ['for', 'of', 'in', 'on', 'at', 'by', 'to', 'with', 'from'];
+        foreach ($words as $word) {
+            if (in_array(strtolower($word), $prepositions, true)) {
+                return $phrase;
+            }
+        }
+
+        $last = strtolower(end($words));
+
+        foreach (self::ADJECTIVE_SUFFIXES as $suffix) {
+            if (str_ends_with($last, $suffix)) {
+                return $phrase;
+            }
+        }
+
+        if ($this->isPlural($last)) {
+            return $phrase;
+        }
+
+        $words[count($words) - 1] = $this->pluralize(end($words));
+
+        return implode(' ', $words);
+    }
+
+    /**
+     * Turn a plural-subject condition into a singular-subject one:
+     * "that are premium members" → "that is a premium member",
+     * "that have warranties" → "that has warranties".
+     * Used when a condition applies to a single related record.
+     */
+    public function singularizeConditionPhrase(string $phrase): string
+    {
+        // Complement agreement only for a phrase-leading "that are X"
+        $handledComplement = false;
+        foreach (['that are not ', 'that are '] as $plural) {
+            if (str_starts_with($phrase, $plural)) {
+                $rest = $this->singularizeComplement(substr($phrase, strlen($plural)));
+                $phrase = str_replace('are', 'is', $plural).$rest;
+                $handledComplement = true;
+                break;
+            }
+        }
+
+        // All conditions in the phrase refer to the same singular entity, so
+        // verb agreement applies throughout (including inside or-groups).
+        $replacements = [
+            "that don't have " => "that doesn't have ",
+            'that have ' => 'that has ',
+            "that don't " => "that doesn't ",
+            'who have ' => 'who has ',
+            "who don't have " => "who doesn't have ",
+        ];
+
+        if (! $handledComplement) {
+            $replacements['that are not '] = 'that is not ';
+            $replacements['that are '] = 'that is ';
+        }
+
+        return strtr($phrase, $replacements);
+    }
+
+    private function singularizeComplement(string $complement): string
+    {
+        $words = explode(' ', trim($complement));
+        $last = end($words);
+        $singular = $this->singularize($last);
+
+        if ($singular === $last) {
+            return $complement;
+        }
+
+        $words[count($words) - 1] = $singular;
+        $phrase = implode(' ', $words);
+        $article = $this->getProperArticle($phrase);
+
+        return ($article ? "{$article} " : '').$phrase;
+    }
+
+    public function convertVerbToPastTense(string $verb): string
+    {
+        return $this->verbInflector->toPastTense($verb);
+    }
+
+    public function knowsVerb(string $verb): bool
+    {
+        return $this->verbInflector->hasMapping($verb);
+    }
+
     private function enhanceFieldNameWithContext(string $fieldName, string $originalField, $builder = null): string
     {
+        $fieldName = str_replace(
+            [' * ', ' / ', ' + ', ' - '],
+            [' times ', ' divided by ', ' plus ', ' minus '],
+            $fieldName
+        );
+
         $fieldName = $this->enhanceLaravelTimestampFields($fieldName, $originalField);
 
         $fieldName = $this->enhanceDateTimeFields($fieldName, $originalField, $builder);
-
-        $fieldName = $this->enhanceBooleanFields($fieldName, $originalField, $builder);
 
         $fieldName = preg_replace_callback('/\b(usd|eur|gbp|jpy|cad|aud)\b/i', function ($matches) {
             return 'in '.strtoupper($matches[1]);
         }, $fieldName);
 
-        $sizeUnits = [
-            'bytes' => 'in bytes',
-            'kilobytes' => 'in KB',
-            'megabytes' => 'in MB',
-            'gigabytes' => 'in GB',
-            'terabytes' => 'in TB',
-        ];
-
-        foreach ($sizeUnits as $unit => $replacement) {
+        foreach (self::UNIT_SUFFIXES as $unit => $replacement) {
             if (str_ends_with($fieldName, ' '.$unit)) {
-                $fieldName = str_replace(' '.$unit, ' '.$replacement, $fieldName);
+                $fieldName = substr($fieldName, 0, -strlen($unit)).$replacement;
                 break;
             }
         }
+
+        foreach (self::TIME_UNIT_SUFFIXES as $unit) {
+            if (str_ends_with($fieldName, ' '.$unit)) {
+                $words = explode(' ', $fieldName);
+                $precedingWord = $words[count($words) - 2] ?? '';
+
+                if (in_array($precedingWord, self::MEASUREMENT_NOUNS, true)) {
+                    $fieldName = substr($fieldName, 0, -strlen($unit))."in {$unit}";
+                }
+                break;
+            }
+        }
+
+        $fieldName = preg_replace_callback('/\b('.implode('|', self::ACRONYMS).')\b/', function ($matches) {
+            return strtoupper($matches[1]);
+        }, $fieldName);
 
         return $fieldName;
     }
@@ -229,339 +347,35 @@ class Inflector
 
         foreach ($timestampPatterns as $pattern => $replacement) {
             if (str_ends_with($originalField, $pattern)) {
-                $base = str_replace($pattern, '', $fieldName);
+                $base = str_replace(trim(str_replace('_', ' ', $pattern)), '', $fieldName);
 
-                return trim($base.$replacement);
+                return trim(rtrim($base).$replacement);
             }
         }
 
         return $fieldName;
     }
 
-    private function enhanceBooleanFields(string $fieldName, string $originalField, $builder = null): string
-    {
-        if (! $this->detectBooleanField($originalField, $builder)) {
-            return $fieldName;
-        }
-
-        return $fieldName;
-    }
-
-    private function detectRelativeTime(Carbon $carbon): ?string
-    {
-        $now = Carbon::now();
-
-        $specialOperation = $this->detectSpecialCarbonOperations($carbon, $now);
-        if ($specialOperation) {
-            return $specialOperation;
-        }
-
-        $totalMinutes = abs($carbon->diffInMinutes($now));
-        $totalHours = abs($carbon->diffInHours($now));
-        $totalDays = abs($carbon->diffInDays($now));
-        $totalWeeks = abs($carbon->diffInWeeks($now));
-        $totalMonths = abs($carbon->diffInMonths($now));
-        $totalYears = abs($carbon->diffInYears($now));
-
-        if ($carbon->isPast()) {
-            $specificOperation = $this->detectPastRelativeTime($totalMinutes, $totalHours, $totalDays, $totalWeeks, $totalMonths, $totalYears, $carbon, $now);
-            if ($specificOperation) {
-                return $specificOperation;
-            }
-        } elseif ($carbon->isFuture()) {
-            $specificOperation = $this->detectFutureRelativeTime($totalMinutes, $totalHours, $totalDays, $totalWeeks, $totalMonths, $totalYears);
-            if ($specificOperation) {
-                return $specificOperation;
-            }
-        }
-
-        if ($carbon->isToday()) {
-            return $this->config['date_formats']['today'] ?? 'today';
-        }
-
-        if ($carbon->isYesterday()) {
-            return $this->config['date_formats']['yesterday'] ?? 'yesterday';
-        }
-
-        if ($carbon->isTomorrow()) {
-            return 'tomorrow';
-        }
-
-        return null;
-    }
-
-    private function detectSpecialCarbonOperations(Carbon $carbon, Carbon $now): ?string
-    {
-
-        for ($minutes = 1; $minutes <= 59; $minutes++) {
-            $testDate = $now->copy()->subMinutes($minutes);
-            if ($this->isDateClose($carbon, $testDate, 60)) {
-                return $minutes === 1 ? 'within the last minute' : "within the last {$minutes} minutes";
-            }
-
-            $testDate = $now->copy()->addMinutes($minutes);
-            if ($this->isDateClose($carbon, $testDate, 60)) {
-                return $minutes === 1 ? 'in the next minute' : "in the next {$minutes} minutes";
-            }
-        }
-
-        for ($hours = 1; $hours <= 23; $hours++) {
-            $testDate = $now->copy()->subHours($hours);
-            if ($this->isDateClose($carbon, $testDate, 600)) {
-                return $hours === 1 ? 'within the last hour' : "within the last {$hours} hours";
-            }
-
-            $testDate = $now->copy()->addHours($hours);
-            if ($this->isDateClose($carbon, $testDate, 600)) {
-                return $hours === 1 ? 'in the next hour' : "in the next {$hours} hours";
-            }
-        }
-
-        $testYesterday = $now->copy()->subDay();
-        if ($this->isDateClose($carbon, $testYesterday, 3600)) {
-            return 'yesterday';
-        }
-
-        $testTomorrow = $now->copy()->addDay();
-        if ($this->isDateClose($carbon, $testTomorrow, 3600)) {
-            return 'tomorrow';
-        }
-
-        $testFourteen = $now->copy()->subDays(14);
-        if ($this->isDateClose($carbon, $testFourteen, 1)) {
-            return 'within the last 14 days';
-        }
-
-        $testFourteenFuture = $now->copy()->addDays(14);
-        if ($this->isDateClose($carbon, $testFourteenFuture, 1)) {
-            return 'in the next 14 days';
-        }
-
-        $testSeven = $now->copy()->subDays(7);
-        if ($this->isDateClose($carbon, $testSeven, 1)) {
-            return 'within the last 7 days';
-        }
-
-        $testSevenFuture = $now->copy()->addDays(7);
-        if ($this->isDateClose($carbon, $testSevenFuture, 1)) {
-            return 'in the next 7 days';
-        }
-
-        for ($weeks = 1; $weeks <= 12; $weeks++) {
-            $testDate = $now->copy()->subWeeks($weeks);
-            if ($this->isDateClose($carbon, $testDate, 3600)) {
-                return $weeks === 1 ? 'within the last week' : "within the last {$weeks} weeks";
-            }
-
-            $testDate = $now->copy()->addWeeks($weeks);
-            if ($this->isDateClose($carbon, $testDate, 3600)) {
-                return $weeks === 1 ? 'in the next week' : "in the next {$weeks} weeks";
-            }
-        }
-
-        for ($days = 2; $days <= 30; $days++) {
-            if ($days === 7 || $days === 14) {
-                continue;
-            }
-            $testDate = $now->copy()->subDays($days);
-            if ($this->isDateClose($carbon, $testDate, 3600)) {
-                return "within the last {$days} days";
-            }
-
-            $testDate = $now->copy()->addDays($days);
-            if ($this->isDateClose($carbon, $testDate, 3600)) {
-                return "in the next {$days} days";
-            }
-        }
-
-        for ($months = 1; $months <= 12; $months++) {
-            $testDate = $now->copy()->subMonths($months);
-            if ($this->isDateClose($carbon, $testDate, 86400)) {
-                return $months === 1 ? 'within the last month' : "within the last {$months} months";
-            }
-
-            $testDate = $now->copy()->addMonths($months);
-            if ($this->isDateClose($carbon, $testDate, 86400)) {
-                return $months === 1 ? 'in the next month' : "in the next {$months} months";
-            }
-        }
-
-        for ($years = 1; $years <= 5; $years++) {
-            $testDate = $now->copy()->subYears($years);
-            if ($this->isDateClose($carbon, $testDate, 86400)) {
-                return $years === 1 ? 'within the last year' : "within the last {$years} years";
-            }
-
-            $testDate = $now->copy()->addYears($years);
-            if ($this->isDateClose($carbon, $testDate, 86400)) {
-                return $years === 1 ? 'in the next year' : "in the next {$years} years";
-            }
-        }
-
-        return null;
-    }
-
-    private function detectPastRelativeTime(float $totalMinutes, float $totalHours, float $totalDays, float $totalWeeks, float $totalMonths, float $totalYears, Carbon $carbon, Carbon $now): ?string
-    {
-
-        if ($totalYears >= 1) {
-            $years = (int) round($totalYears);
-            $testDate = $now->copy()->subYears($years);
-            if ($this->isDateClose($carbon, $testDate)) {
-                return $years === 1 ? 'within the last year' : "within the last {$years} years";
-            }
-        }
-
-        if ($totalMonths >= 1) {
-            $months = (int) round($totalMonths);
-            $testDate = $now->copy()->subMonths($months);
-            if ($this->isDateClose($carbon, $testDate)) {
-                return $months === 1 ? 'within the last month' : "within the last {$months} months";
-            }
-        }
-
-        if ($totalWeeks >= 1) {
-            $weeks = (int) round($totalWeeks);
-            $testDate = $now->copy()->subWeeks($weeks);
-            if ($this->isDateClose($carbon, $testDate)) {
-                return $weeks === 1 ? 'within the last week' : "within the last {$weeks} weeks";
-            }
-        }
-
-        if ($totalDays >= 1) {
-            $days = (int) round($totalDays);
-            $testDate = $now->copy()->subDays($days);
-            if ($this->isDateClose($carbon, $testDate)) {
-                return $days === 1 ? 'within the last day' : "within the last {$days} days";
-            }
-        }
-
-        if ($totalHours >= 1) {
-            $hours = (int) round($totalHours);
-            $testDate = $now->copy()->subHours($hours);
-            if ($this->isDateClose($carbon, $testDate, 600)) {
-                return $hours === 1 ? 'within the last hour' : "within the last {$hours} hours";
-            }
-        }
-
-        if ($totalMinutes >= 1) {
-            $minutes = (int) round($totalMinutes);
-            $testDate = $now->copy()->subMinutes($minutes);
-            if ($this->isDateClose($carbon, $testDate, 60)) {
-                return $minutes === 1 ? 'within the last minute' : "within the last {$minutes} minutes";
-            }
-        }
-
-        return $this->detectStartEndOperations($carbon, $now);
-    }
-
-    private function detectFutureRelativeTime(float $totalMinutes, float $totalHours, float $totalDays, float $totalWeeks, float $totalMonths, float $totalYears): ?string
-    {
-
-        if ($totalYears >= 1) {
-            $years = (int) round($totalYears);
-
-            return $years === 1 ? 'in the next year' : "in the next {$years} years";
-        }
-
-        if ($totalMonths >= 1) {
-            $months = (int) round($totalMonths);
-
-            return $months === 1 ? 'in the next month' : "in the next {$months} months";
-        }
-
-        if ($totalWeeks >= 1) {
-            $weeks = (int) round($totalWeeks);
-
-            return $weeks === 1 ? 'in the next week' : "in the next {$weeks} weeks";
-        }
-
-        if ($totalDays >= 1) {
-            $days = (int) round($totalDays);
-
-            return $days === 1 ? 'in the next day' : "in the next {$days} days";
-        }
-
-        if ($totalHours >= 1) {
-            $hours = (int) round($totalHours);
-
-            return $hours === 1 ? 'in the next hour' : "in the next {$hours} hours";
-        }
-
-        if ($totalMinutes >= 1) {
-            $minutes = (int) round($totalMinutes);
-
-            return $minutes === 1 ? 'in the next minute' : "in the next {$minutes} minutes";
-        }
-
-        return null;
-    }
-
-    private function detectStartEndOperations(Carbon $carbon, Carbon $now): ?string
-    {
-        if ($carbon->isSameDay($now)) {
-            if ($carbon->isStartOfDay()) {
-                return 'start of today';
-            }
-            if ($carbon->isEndOfDay()) {
-                return 'end of today';
-            }
-        }
-
-        if ($carbon->isSameWeek($now)) {
-            if ($carbon->isStartOfWeek()) {
-                return 'start of this week';
-            }
-            if ($carbon->isEndOfWeek()) {
-                return 'end of this week';
-            }
-        }
-
-        if ($carbon->isSameMonth($now)) {
-            if ($carbon->isStartOfMonth()) {
-                return 'start of this month';
-            }
-            if ($carbon->isEndOfMonth()) {
-                return 'end of this month';
-            }
-        }
-
-        if ($carbon->isSameYear($now)) {
-            if ($carbon->isStartOfYear()) {
-                return 'start of this year';
-            }
-            if ($carbon->isEndOfYear()) {
-                return 'end of this year';
-            }
-        }
-
-        return null;
-    }
-
-    private function isDateClose(Carbon $date1, Carbon $date2, int $toleranceSeconds = 86400): bool
-    {
-        $diffSeconds = abs($date1->diffInSeconds($date2));
-
-        return $diffSeconds <= $toleranceSeconds;
-    }
-
+    /**
+     * "next_billing_date" reads better as "next billing", but a single-word
+     * remainder like "work" needs its suffix kept ("work date").
+     */
     private function enhanceDateTimeFields(string $fieldName, string $originalField, $builder = null): string
     {
-
         if (! $this->isDateColumn($originalField, $builder)) {
             return $fieldName;
         }
 
-        if (str_ends_with($originalField, '_at')) {
-            $withoutAt = str_replace(' at', '', $fieldName);
+        foreach ([' at', ' date'] as $suffix) {
+            if (str_ends_with($fieldName, $suffix)) {
+                $stripped = trim(substr($fieldName, 0, -strlen($suffix)));
 
-            return trim($withoutAt);
-        }
+                if (str_contains($stripped, ' ')) {
+                    return $stripped;
+                }
 
-        if (str_ends_with($originalField, '_date')) {
-            $withoutDate = str_replace(' date', '', $fieldName);
-
-            return trim($withoutDate);
+                return $fieldName;
+            }
         }
 
         return $fieldName;
@@ -569,45 +383,6 @@ class Inflector
 
     private function isDateColumn(string $column, $builder = null): bool
     {
-        if (in_array($column, ['created_at', 'updated_at', 'deleted_at', 'email_verified_at', 'last_used_at'])) {
-            return true;
-        }
-
-        if ($builder && method_exists($builder, 'getModel')) {
-            try {
-                $model = $builder->getModel();
-
-                $casts = $model->getCasts();
-                if (isset($casts[$column])) {
-                    $castType = strtolower($casts[$column]);
-
-                    $castType = explode(':', $castType)[0];
-
-                    if (in_array($castType, ['date', 'datetime', 'timestamp', 'time'])) {
-                        return true;
-                    }
-                }
-
-                $table = $model->getTable();
-                $connection = $model->getConnection();
-                $columnType = $connection->getDoctrineColumn($table, $column)->getType();
-
-                if ($columnType) {
-                    $typeName = $columnType->getName();
-                    if (in_array($typeName, ['date', 'datetime', 'datetimetz', 'time', 'timestamp'])) {
-                        return true;
-                    }
-                }
-            } catch (\Exception $e) {
-
-            }
-        }
-
-        return (bool) preg_match('/(date|time|at)$/i', $column);
-    }
-
-    public function convertVerbToPastTense(string $verb): string
-    {
-        return $this->verbInflector->toPastTense($verb);
+        return $this->fieldTypeDetector->isDateField($column, $builder);
     }
 }
